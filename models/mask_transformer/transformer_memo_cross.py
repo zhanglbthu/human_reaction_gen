@@ -408,7 +408,7 @@ class MaskTransformer(nn.Module):
     @torch.no_grad()
     @eval_decorator
     def generate(self,
-                 conds,
+                 conds, # attention_features_mean: [B, 512]
                  m_lens,
                  timesteps: int,
                  cond_scale: int,

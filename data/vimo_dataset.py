@@ -266,6 +266,10 @@ class VimoDataset(VimoBaseDataset):
         super().__init__(opt, mean, std, data_prefix, ann_file, pipeline, start_index=start_index, **kwargs)
 
     def load_annotations(self):
+        '''
+        self.data_prefix: ./Data/VIMO
+        self.ann_file: test.txt
+        '''
         video_infos = []
         ann_file_path = osp.join(self.data_prefix, self.ann_file)
         with open(ann_file_path, 'r') as fin:
@@ -274,7 +278,7 @@ class VimoDataset(VimoBaseDataset):
                 video_name, motion_name = line_split
                 video_name = osp.join(self.data_prefix, video_name)
                 motion_name = osp.join(self.data_prefix, motion_name)
-                motion = np.load(motion_name)
+                motion = np.load(motion_name) # [N, 263]
                 video_infos.append(dict(filename=video_name, label=motion, tar=False))
         return video_infos
 

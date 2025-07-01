@@ -1482,8 +1482,14 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         num_mm_batch = 3
 
     for i, batch in enumerate(val_loader):
+        '''
+        imgs: [B, 16, 3, 224, 224]
+        pose: [B, 200, 263]
+        '''
         imgs, pose, m_length, video_path = batch
-        at_features_mean, at_features = video_encoder(imgs.cuda())
+        at_features_mean, at_features = video_encoder(imgs.cuda()) 
+        # at_features_mean: [B, 512], Global visual representation
+        # at_features: [B, 16, 512], Local visual representation
 
         m_length = m_length.cuda()
 
@@ -1498,20 +1504,19 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                 mids = trans.generate(at_features_mean, m_length // 4, time_steps, cond_scale,
                                       temperature=temperature, topk_filter_thres=topkr,
                                       gsample=gsample, force_mask=force_mask, memory=at_features)
-
-                # motion_codes = motion_codes.permute(0, 2, 1)
-                # mids.unsqueeze_(-1)
+                # mids: [B, 49]
+                # MaskTransformer在video condition下生成的VQ Token索引序列
+                
                 pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
-                # pred_codes = trans(code_indices[..., 0], clip_text, m_length//4, force_mask=force_mask)
-                # pred_ids = torch.where(pred_ids==-1, 0, pred_ids)
+                # pred_ids: [B, 49, 6], Token Prediction
+                # Residual Transformer生成精细Token
 
                 pred_motions = vq_model.forward_decoder(pred_ids)
-
-                # pred_motions = vq_model.decoder(codes)
-                # pred_motions = vq_model.forward_decoder(mids)
+                # pred_motions: [B, 196, 263]
 
                 em_pred = eval_wrapper.get_motion_embeddings(pred_motions.clone(), m_length)
-                # em_pred = em_pred.unsqueeze(1)  #(bs, 1, d)
+                # em_pred: [B, 512]
+
                 motion_multimodality_batch.append(em_pred.unsqueeze(1))
             motion_multimodality_batch = torch.cat(motion_multimodality_batch, dim=1) #(bs, 30, d)
             motion_multimodality.append(motion_multimodality_batch)
@@ -1520,14 +1525,10 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                   temperature=temperature, topk_filter_thres=topkr,
                                   force_mask=force_mask, memory=at_features)
 
-            # motion_codes = motion_codes.permute(0, 2, 1)
-            # mids.unsqueeze_(-1)
             pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
-            # pred_codes = trans(code_indices[..., 0], clip_text, m_length//4, force_mask=force_mask)
-            # pred_ids = torch.where(pred_ids == -1, 0, pred_ids)
-
+            
             pred_motions = vq_model.forward_decoder(pred_ids)
-            # pred_motions = vq_model.forward_decoder(mids)
+            # pred_motions: [B, 196, 263]
 
             em_pred = eval_wrapper.get_motion_embeddings(pred_motions.clone(), m_length)
 
@@ -1539,6 +1540,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
 
         nb_sample += bs
 
+    # region: calculate quantitative metrics
     motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()
     motion_pred_np = torch.cat(motion_pred_list, dim=0).cpu().numpy()
     if not force_mask and cal_mm:
@@ -1556,6 +1558,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
           f"Diversity Real. {diversity_real:.4f}, Diversity. {diversity:.4f}, " \
           f"multimodality. {multimodality:.4f}"
     print(msg)
+    # endregion
     return fid, diversity_real, diversity, multimodality
 
 @torch.no_grad()

@@ -1,0 +1,29 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "evaluate_gen",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/eval_trans_res_memo_cross_vimo.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--dataset_name", "vimo",
+                "--vq_name", "rvq_bs256_finetune_ep10",
+                "--name", "mtrans_memo_cross_l6_bs64_ep200",
+                "--res_name", "rtrans_memo_cross_l6_bs64_ep200",
+                "--gpu_id", "0",
+                "--cond_scale", "4",
+                "--time_steps", "10",
+                "--ext", "rvq1_rtrans1_bs64_cs4_ts10-newData",
+                "--which_epoch", "all",
+                "--test_txt", "test.txt"
+            ],
+            "justMyCode": false,
+        },
+    ]
+}
