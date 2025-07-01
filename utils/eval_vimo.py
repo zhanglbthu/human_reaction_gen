@@ -1463,7 +1463,8 @@ def evaluation_mask_transformer_test_plus_res_fe_memo(val_loader, vq_model, res_
 def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_model, trans, video_encoder,
                                               repeat_id, eval_wrapper, time_steps,
                                               cond_scale, temperature, topkr, gsample=True, 
-                                              force_mask=False, cal_mm=True, res_cond_scale=5):
+                                              force_mask=False, cal_mm=True, res_cond_scale=5,
+                                              save_anim=False, out_dir='./Data/eval', plot_func=None):
                                               
     trans.eval()
     vq_model.eval()
@@ -1539,7 +1540,32 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         motion_pred_list.append(em_pred)
 
         nb_sample += bs
+    
+    if save_anim:
+        rand_idx = torch.arange(bs)
+            
+        data_gt = pose[rand_idx].detach().cpu().numpy()
+        data_pred = pred_motions[rand_idx].detach().cpu().numpy()
 
+        # captions = ['' for _ in rand_idx]  # [clip_text[k] for k in rand_idx]
+        # lengths = m_length[rand_idx].cpu().numpy()
+        video_path_save = [video_path[i] for i in rand_idx.tolist()]
+
+        save_dir = os.path.join(out_dir, 'animation', 'E%04d' % repeat_id)
+        os.makedirs(save_dir, exist_ok=True)
+        pred_save_dir = os.path.join(save_dir, 'pred')
+        gt_save_dir = os.path.join(save_dir, 'gt')
+        os.makedirs(pred_save_dir, exist_ok=True)
+        os.makedirs(gt_save_dir, exist_ok=True)
+        plot_func(data_pred, pred_save_dir)
+        plot_func(data_gt, gt_save_dir)
+
+        # 保存视频路径
+        txt_save_path = os.path.join(save_dir, 'video_paths.txt')
+        with open(txt_save_path, 'w') as f:
+            for path in video_path_save:
+                f.write(f"{path}\n")
+    
     # region: calculate quantitative metrics
     motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()
     motion_pred_np = torch.cat(motion_pred_list, dim=0).cpu().numpy()

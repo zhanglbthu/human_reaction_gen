@@ -213,13 +213,6 @@ class RVQTokenizerTrainer:
                 save_dir = pjoin(self.opt.eval_dir, 'E%04d' % (epoch))
                 os.makedirs(save_dir, exist_ok=True)
                 plot_eval(data, save_dir)
-                # if plot_eval is not None:
-                #     save_dir = pjoin(self.opt.eval_dir, 'E%04d' % (epoch))
-                #     os.makedirs(save_dir, exist_ok=True)
-                #     plot_eval(data, save_dir)
-
-            # if epoch - min_val_epoch >= self.opt.early_stop_e:
-            #     print('Early Stopping!~')
 
 
 class LengthEstTrainer(object):

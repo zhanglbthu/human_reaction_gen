@@ -22,6 +22,21 @@ from tqdm import tqdm
 import warnings
 warnings.filterwarnings('ignore')
 
+from utils.motion_process import recover_from_ric
+from utils.plot_script import plot_3d_motion
+from utils import paramUtil
+kinematic_chain = paramUtil.t2m_kinematic_chain
+fps = 20
+radius = 4
+
+def plot_t2m(data, save_dir):
+    data = data * std + mean
+    for i in range(len(data)):
+        joint_data = data[i]
+        joint = recover_from_ric(torch.from_numpy(joint_data).float(), 22).numpy()
+        save_path = pjoin(save_dir, '%02d.mp4' % (i))
+        plot_3d_motion(save_path, kinematic_chain, joint, title="", fps=fps, radius=radius)
+
 def load_vq_model(vq_opt):
     # opt_path = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'opt.txt')
     vq_model = RVQVAE(vq_opt,
@@ -181,6 +196,9 @@ if __name__ == '__main__':
     else:
         raise KeyError('Dataset Does Not Exist')
 
+    mean = np.load(pjoin(opt.data_root, 'Mean.npy'))
+    std = np.load(pjoin(opt.data_root, 'Std.npy'))
+
     out_path = pjoin(out_dir, "%s.log"%opt.ext)
 
     f = open(pjoin(out_path), 'w')
@@ -215,6 +233,9 @@ if __name__ == '__main__':
     print('Preprocessing data...')
     eval_val_loader = [batch_data for batch_data in tqdm(eval_val_loader)]
 
+    out_dir = './Data/eval'
+    os.makedirs(out_dir, exist_ok=True)
+    
     # model_dir = pjoin(opt.)
     for file in os.listdir(model_dir):
         if opt.which_epoch != "all" and opt.which_epoch not in file:
@@ -237,14 +258,15 @@ if __name__ == '__main__':
         div = []
         mm = []
 
-        repeat_time = 20
+        repeat_time = 1
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm = \
                     eval_vimo.evaluation_mask_transformer_test_plus_res_memo(eval_val_loader, vq_model, res_model, t2m_transformer, video_encoder,
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
-                                                                        gsample=opt.gumbel_sample, force_mask=opt.force_mask, cal_mm=True)
+                                                                        gsample=opt.gumbel_sample, force_mask=opt.force_mask, cal_mm=False,
+                                                                        save_anim=True, out_dir=out_dir, plot_func=plot_t2m)
             fid.append(eval_fid)
             div_real.append(eval_div_real)
             div.append(eval_div)
