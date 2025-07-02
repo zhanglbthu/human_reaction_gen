@@ -188,7 +188,7 @@ if __name__ == '__main__':
     os.makedirs(out_dir, exist_ok=True)
 
     if opt.dataset_name == "vimo":
-        opt.data_root = './Data/VIMO/'
+        opt.data_root = '/root/autodl-tmp/Data/VIMO/'
         opt.nb_joints = 22
         dim_pose = 263
         dataset_opt_path = './checkpoints/vimo/Comp_v6_KLD005/opt.txt'
@@ -233,7 +233,7 @@ if __name__ == '__main__':
     print('Preprocessing data...')
     eval_val_loader = [batch_data for batch_data in tqdm(eval_val_loader)]
 
-    out_dir = './Data/eval'
+    out_dir = '/root/autodl-tmp/Data/eval'
     os.makedirs(out_dir, exist_ok=True)
     
     # model_dir = pjoin(opt.)

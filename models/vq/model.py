@@ -78,8 +78,10 @@ class RVQVAE(nn.Module):
         return x_out, commit_loss, perplexity
 
     def forward_decoder(self, x):
+        # 根据token id获取每个quantizer的表示
         x_d = self.quantizer.get_codes_from_indices(x)
-        # x_d = x_d.view(1, -1, self.code_dim).permute(0, 2, 1).contiguous()
+        
+        # 合并所有quantizer的表示
         x = x_d.sum(dim=0).permute(0, 2, 1)
 
         # decoder

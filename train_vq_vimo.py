@@ -31,7 +31,6 @@ def plot_t2m(data, save_dir):
         save_path = pjoin(save_dir, '%02d.mp4' % (i))
         plot_3d_motion(save_path, kinematic_chain, joint, title="None", fps=fps, radius=radius)
 
-
 if __name__ == "__main__":
     # torch.autograd.set_detect_anomaly(True)
     opt = arg_parse(True)
@@ -52,7 +51,7 @@ if __name__ == "__main__":
     os.makedirs(opt.log_dir, exist_ok=True)
 
     if opt.dataset_name == "vimo":
-        opt.data_root = './Data/VIMO/'
+        opt.data_root = '/root/autodl-tmp/Data/VIMO/'
         opt.motion_dir = pjoin(opt.data_root, 'vector_263')
         opt.joints_num = 22
         dim_pose = 263
@@ -87,9 +86,6 @@ if __name__ == "__main__":
                 opt.vq_norm)
 
     pc_vq = sum(param.numel() for param in net.parameters())
-    #print(net)
-    # print("Total parameters of discriminator net: {}".format(pc_vq))
-    # all_params += pc_vq_dis
 
     print('Total parameters of the models: {}M'.format(pc_vq/1000_000))
 
