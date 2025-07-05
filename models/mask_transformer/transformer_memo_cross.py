@@ -342,7 +342,6 @@ class MaskTransformer(nn.Module):
         else:
             raise NotImplementedError("Unsupported condition mode!!!")
 
-
         '''
         Prepare mask
         '''
@@ -691,7 +690,6 @@ class MaskTransformer(nn.Module):
         og_tokens_scores = og_tokens_scores.squeeze(-1)  # (b, seqlen)
 
         return og_tokens_scores
-
 
 class ResidualTransformer(nn.Module):
     def __init__(self, code_dim, cond_mode, latent_dim=256, ff_size=1024, num_layers=8, cond_drop_prob=0.1,

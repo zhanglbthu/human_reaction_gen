@@ -1506,11 +1506,11 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                       temperature=temperature, topk_filter_thres=topkr,
                                       gsample=gsample, force_mask=force_mask, memory=at_features)
                 # mids: [B, 49]
-                # MaskTransformer在video condition下生成的VQ Token索引序列
+                # Mask Transformer在video condition下生成Base-layer的VQ Token id
                 
                 pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
                 # pred_ids: [B, 49, 6], Token Prediction
-                # Residual Transformer生成精细Token
+                # Residual Transformer生成Residual-layer的VQ Token id
 
                 pred_motions = vq_model.forward_decoder(pred_ids)
                 # pred_motions: [B, 196, 263]
@@ -1541,30 +1541,30 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
 
         nb_sample += bs
     
-    if save_anim:
-        rand_idx = torch.arange(bs)
-            
-        data_gt = pose[rand_idx].detach().cpu().numpy()
-        data_pred = pred_motions[rand_idx].detach().cpu().numpy()
+        if save_anim:
+            rand_idx = torch.arange(bs)
+                
+            data_gt = pose[rand_idx].detach().cpu().numpy()
+            data_pred = pred_motions[rand_idx].detach().cpu().numpy()
 
-        # captions = ['' for _ in rand_idx]  # [clip_text[k] for k in rand_idx]
-        # lengths = m_length[rand_idx].cpu().numpy()
-        video_path_save = [video_path[i] for i in rand_idx.tolist()]
+            # captions = ['' for _ in rand_idx]  # [clip_text[k] for k in rand_idx]
+            # lengths = m_length[rand_idx].cpu().numpy()
+            video_path_save = [video_path[idx] for idx in rand_idx.tolist()]
 
-        save_dir = os.path.join(out_dir, 'animation', 'E%04d' % repeat_id)
-        os.makedirs(save_dir, exist_ok=True)
-        pred_save_dir = os.path.join(save_dir, 'pred')
-        gt_save_dir = os.path.join(save_dir, 'gt')
-        os.makedirs(pred_save_dir, exist_ok=True)
-        os.makedirs(gt_save_dir, exist_ok=True)
-        plot_func(data_pred, pred_save_dir)
-        plot_func(data_gt, gt_save_dir)
+            save_dir = os.path.join(out_dir, 'animation', 'E%04d' % repeat_id, 'batch_%04d' % i)
+            os.makedirs(save_dir, exist_ok=True)
+            pred_save_dir = os.path.join(save_dir, 'pred')
+            gt_save_dir = os.path.join(save_dir, 'gt')
+            os.makedirs(pred_save_dir, exist_ok=True)
+            os.makedirs(gt_save_dir, exist_ok=True)
+            plot_func(data_pred, pred_save_dir)
+            plot_func(data_gt, gt_save_dir)
 
-        # 保存视频路径
-        txt_save_path = os.path.join(save_dir, 'video_paths.txt')
-        with open(txt_save_path, 'w') as f:
-            for path in video_path_save:
-                f.write(f"{path}\n")
+            # 保存视频路径
+            txt_save_path = os.path.join(save_dir, 'video_paths.txt')
+            with open(txt_save_path, 'w') as f:
+                for path in video_path_save:
+                    f.write(f"{path}\n")
     
     # region: calculate quantitative metrics
     motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()

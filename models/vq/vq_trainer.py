@@ -20,7 +20,6 @@ import sys
 def def_value():
     return 0.0
 
-
 class RVQTokenizerTrainer:
     def __init__(self, args, vq_model):
         self.opt = args
@@ -50,8 +49,6 @@ class RVQTokenizerTrainer:
 
         loss = loss_rec + self.opt.loss_vel * loss_explicit + self.opt.commit * loss_commit
 
-        # return loss, loss_rec, loss_vel, loss_commit, perplexity
-        # return loss, loss_rec, loss_percept, loss_commit, perplexity
         return loss, loss_rec, loss_explicit, loss_commit, perplexity
 
 
@@ -85,6 +82,7 @@ class RVQTokenizerTrainer:
         self.vq_model.to(self.device)
 
         if self.opt.finetune:
+            # 加载在HumanML3D上预训练的RVQ-VAE模型
             model_dir = pjoin(self.opt.finetune_model_dir, 'net_best_fid.tar')
             checkpoint = torch.load(model_dir, map_location=self.device)
             print("Loading model from: %s"%(model_dir))

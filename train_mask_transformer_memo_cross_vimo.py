@@ -164,7 +164,7 @@ if __name__ == '__main__':
     opt.num_tokens = vq_opt.nb_code
     
     video_encoder = prepare_video_encoder(clip_version)
-    breakpoint()
+
     t2m_transformer = MaskTransformer(code_dim=vq_opt.code_dim,
                                       cond_mode='video',
                                       latent_dim=opt.latent_dim,
@@ -176,9 +176,6 @@ if __name__ == '__main__':
                                       cond_drop_prob=opt.cond_drop_prob,
                                       clip_version=clip_version,
                                       opt=opt)
-
-    # if opt.fix_token_emb:
-    #     t2m_transformer.load_and_freeze_token_emb(vq_model.quantizer.codebooks[0])
 
     all_params = 0
     pc_transformer = sum(param.numel() for param in t2m_transformer.parameters_wo_clip())

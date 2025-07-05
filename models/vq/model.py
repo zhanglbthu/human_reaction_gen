@@ -67,14 +67,10 @@ class RVQVAE(nn.Module):
         x_encoder = self.encoder(x_in)
 
         ## quantization
-        # x_quantized, code_idx, commit_loss, perplexity = self.quantizer(x_encoder, sample_codebook_temp=0.5,
-        #                                                                 force_dropout_index=0) #TODO hardcode
         x_quantized, code_idx, commit_loss, perplexity = self.quantizer(x_encoder, sample_codebook_temp=0.5)
 
-        # print(code_idx[0, :, 1])
         ## decoder
         x_out = self.decoder(x_quantized)
-        # x_out = self.postprocess(x_decoder)
         return x_out, commit_loss, perplexity
 
     def forward_decoder(self, x):

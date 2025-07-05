@@ -265,7 +265,8 @@ if __name__ == '__main__':
                     eval_vimo.evaluation_mask_transformer_test_plus_res_memo(eval_val_loader, vq_model, res_model, t2m_transformer, video_encoder,
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
-                                                                        gsample=opt.gumbel_sample, force_mask=opt.force_mask, cal_mm=False,
+                                                                        gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
+                                                                        cal_mm=False,
                                                                         save_anim=True, out_dir=out_dir, plot_func=plot_t2m)
             fid.append(eval_fid)
             div_real.append(eval_div_real)

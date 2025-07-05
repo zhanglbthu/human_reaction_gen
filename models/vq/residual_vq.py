@@ -37,17 +37,13 @@ class ResidualVQ(nn.Module):
     ):
         super().__init__()
 
-        self.num_quantizers = num_quantizers
+        self.num_quantizers = num_quantizers # 6
 
-        # self.layers = nn.ModuleList([VectorQuantize(accept_image_fmap = accept_image_fmap, **kwargs) for _ in range(num_quantizers)])
         if shared_codebook:
             layer = QuantizeEMAReset(**kwargs)
             self.layers = nn.ModuleList([layer for _ in range(num_quantizers)])
         else:
             self.layers = nn.ModuleList([QuantizeEMAReset(**kwargs) for _ in range(num_quantizers)])
-        # self.layers = nn.ModuleList([QuantizeEMA(**kwargs) for _ in range(num_quantizers)])
-
-        # self.quantize_dropout = quantize_dropout and num_quantizers > 1
 
         assert quantize_dropout_cutoff_index >= 0 and quantize_dropout_prob >= 0
 
@@ -97,8 +93,9 @@ class ResidualVQ(nn.Module):
         return latent
 
     def forward(self, x, return_all_codes = False, sample_codebook_temp = None, force_dropout_index=-1):
-        # debug check
-        # print(self.codebooks[:,0,0].detach().cpu().numpy())
+        '''
+        x: [B, 512, T]
+        '''
         num_quant, quant_dropout_prob, device = self.num_quantizers, self.quantize_dropout_prob, x.device
 
         quantized_out = 0.
@@ -108,25 +105,21 @@ class ResidualVQ(nn.Module):
         all_indices = []
         all_perplexity = []
 
-
         should_quantize_dropout = self.training and random.random() < self.quantize_dropout_prob
 
         start_drop_quantize_index = num_quant
         # To ensure the first-k layers learn things as much as possible, we randomly dropout the last q - k layers
+        # 随机丢弃最后的 q - k 层，增强模型的鲁棒性
         if should_quantize_dropout:
             start_drop_quantize_index = randrange(self.quantize_dropout_cutoff_index, num_quant) # keep quant layers <= quantize_dropout_cutoff_index, TODO vary in batch
             null_indices_shape = [x.shape[0], x.shape[-1]] # 'b*n'
             null_indices = torch.full(null_indices_shape, -1., device = device, dtype = torch.long)
-            # null_loss = 0.
 
         if force_dropout_index >= 0:
             should_quantize_dropout = True
             start_drop_quantize_index = force_dropout_index
             null_indices_shape = [x.shape[0], x.shape[-1]]  # 'b*n'
             null_indices = torch.full(null_indices_shape, -1., device=device, dtype=torch.long)
-
-        # print(force_dropout_index)
-        # go through the layers
 
         for quantizer_index, layer in enumerate(self.layers):
 
@@ -135,14 +128,8 @@ class ResidualVQ(nn.Module):
                 # all_losses.append(null_loss)
                 continue
 
-            # layer_indices = None
-            # if return_loss:
-            #     layer_indices = indices[..., quantizer_index] #gt indices
-
-            # quantized, *rest = layer(residual, indices = layer_indices, sample_codebook_temp = sample_codebook_temp) #single quantizer TODO
             quantized, *rest = layer(residual, return_idx=True, temperature=sample_codebook_temp) #single quantizer
 
-            # print(quantized.shape, residual.shape)
             residual -= quantized.detach()
             quantized_out += quantized
 
@@ -150,7 +137,6 @@ class ResidualVQ(nn.Module):
             all_indices.append(embed_indices)
             all_losses.append(loss)
             all_perplexity.append(perplexity)
-
 
         # stack all losses and indices
         all_indices = torch.stack(all_indices, dim=-1)
