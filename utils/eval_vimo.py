@@ -1542,7 +1542,8 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         nb_sample += bs
     
         if save_anim:
-            rand_idx = torch.arange(bs)
+            # rand_idx = torch.arange(bs)
+            rand_idx = torch.randperm(bs)[:1]
                 
             data_gt = pose[rand_idx].detach().cpu().numpy()
             data_pred = pred_motions[rand_idx].detach().cpu().numpy()
@@ -1550,6 +1551,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
             # captions = ['' for _ in rand_idx]  # [clip_text[k] for k in rand_idx]
             # lengths = m_length[rand_idx].cpu().numpy()
             video_path_save = [video_path[idx] for idx in rand_idx.tolist()]
+            length_path_save = [m_length[idx].item() for idx in rand_idx.tolist()]
 
             save_dir = os.path.join(out_dir, 'animation', 'E%04d' % repeat_id, 'batch_%04d' % i)
             os.makedirs(save_dir, exist_ok=True)
@@ -1561,10 +1563,16 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
             plot_func(data_gt, gt_save_dir)
 
             # 保存视频路径
-            txt_save_path = os.path.join(save_dir, 'video_paths.txt')
-            with open(txt_save_path, 'w') as f:
+            txt_video_path = os.path.join(save_dir, 'video_paths.txt')
+            with open(txt_video_path, 'w') as f:
                 for path in video_path_save:
                     f.write(f"{path}\n")
+                    
+            # 保存长度信息
+            txt_length_path = os.path.join(save_dir, 'lengths.txt')
+            with open(txt_length_path, 'w') as f:
+                for length in length_path_save:
+                    f.write(f"{length}\n")
     
     # region: calculate quantitative metrics
     motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()
