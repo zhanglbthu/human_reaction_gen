@@ -304,10 +304,10 @@ dict(type='ToTensor', keys=['imgs'])
 
 val_pipeline = [
 dict(type='DecordInit'),
+# config_num_frames = 16
 dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config_num_frames, test_mode=True),
 dict(type='DecordDecode'),
-#dict(type='Resize', scale=(-1, scale_resize)),
-#dict(type='CenterCrop', crop_size=config_input_size),
+# config_input_size = 224
 dict(type='Resize', scale=(config_input_size, config_input_size), keep_ratio=False),
 dict(type='Normalize', **img_norm_cfg),
 dict(type='FormatShape', input_format='NCHW'),
