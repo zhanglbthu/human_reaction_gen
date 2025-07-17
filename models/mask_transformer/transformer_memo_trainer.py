@@ -39,12 +39,12 @@ class MaskTransformerTrainer:
 
     def forward(self, batch_data):
 
-        imgs, motion, m_lens, video_path = batch_data
-        at_features_mean, at_features = self.video_encoder(imgs.cuda())
+        imgs, motion, m_lens, video_path = batch_data # imgs: [B, T, C, H, W]
+        at_features_mean, at_features = self.video_encoder(imgs.cuda()) # at_features_mean: [B, 512], at_features: [B, T, 512]
         conds = at_features_mean
         
-        motion = motion.detach().float().to(self.device)
-        m_lens = m_lens.detach().long().to(self.device)
+        motion = motion.detach().float().to(self.device) # motion: [B, N, 263]
+        m_lens = m_lens.detach().long().to(self.device) # m_lens: [B, 1]
 
         # (b, n, q)
         code_idx, _ = self.vq_model.encode(motion)
