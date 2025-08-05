@@ -313,10 +313,10 @@ class MaskTransformer(nn.Module):
 
     def forward(self, ids, y, m_lens, memory):
         '''
-        :param ids: (b, n)
-        :param y: raw text for cond_mode=text, (b, ) for cond_mode=action
-        :m_lens: (b,)
-        :memory: (b, frame_num, clip_dim)
+        :param ids: (b, n); [64, 50]
+        :param y: raw text for cond_mode=text, (b, ) for cond_mode=action; [64, 512]
+        :m_lens: (b,); [64]
+        :memory: (b, frame_num, clip_dim); [64, 16, 512]
         :return:
         '''
 
@@ -326,7 +326,10 @@ class MaskTransformer(nn.Module):
         # Positions that are PADDED are ALL FALSE
         non_pad_mask = lengths_to_mask(m_lens, ntokens) #(b, n)
         ids = torch.where(non_pad_mask, ids, self.pad_id)
-
+        '''
+        ids: [id1, id2, id3, id4, id5] -> [id1, id2, id3, 513, 513]
+        '''
+        
         force_mask = False
         if self.cond_mode == 'text':
             with torch.no_grad():
@@ -345,22 +348,33 @@ class MaskTransformer(nn.Module):
         '''
         Prepare mask
         '''
-        rand_time = uniform((bs,), device=device)
-        rand_mask_probs = self.noise_schedule(rand_time)
+        rand_time = uniform((bs,), device=device)   # [0.7, 0.5, ..., 0.6] (64)
+        rand_mask_probs = self.noise_schedule(rand_time) # consine_schedule
         num_token_masked = (ntokens * rand_mask_probs).round().clamp(min=1)
 
         batch_randperm = torch.rand((bs, ntokens), device=device).argsort(dim=-1)
+
         # Positions to be MASKED are ALL TRUE
         mask = batch_randperm < num_token_masked.unsqueeze(-1)
+        '''
+        mask: [False, True, False, True, True]
+        '''
 
         # Positions to be MASKED must also be NON-PADDED
         mask &= non_pad_mask
+        '''
+        mask: [False, True, False, False, False]
+        '''
 
         # Note this is our training target, not input
         labels = torch.where(mask, ids, self.mask_id)
+        '''
+        labels: [512, id2, 512, 512, 512]
+        '''
 
         x_ids = ids.clone()
 
+        # TODO: from Bert Masking Scheme to GPT Masking Scheme
         # Further Apply Bert Masking Scheme
         # Step 1: 10% replace with an incorrect token
         mask_rid = get_mask_subset_prob(mask, 0.1)
@@ -368,8 +382,6 @@ class MaskTransformer(nn.Module):
         x_ids = torch.where(mask_rid, rand_id, x_ids)
         # Step 2: 90% x 10% replace with correct token, and 90% x 88% replace with mask token
         mask_mid = get_mask_subset_prob(mask & ~mask_rid, 0.88)
-
-        # mask_mid = mask
 
         x_ids = torch.where(mask_mid, self.mask_id, x_ids)
 

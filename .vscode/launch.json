@@ -1,10 +1,6 @@
 {
-    // 使用 IntelliSense 了解相关属性。 
-    // 悬停以查看现有属性的描述。
-    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "name": "evaluate_gen",
             "type": "debugpy",
@@ -23,7 +19,26 @@
                 "--which_epoch", "all",
                 "--test_txt", "test.txt"
             ],
-            "justMyCode": false,
+            "justMyCode": false
         },
+        {
+            "name": "train_mask_transformer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/train_mask_transformer.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--name", "mtrans_memo_cross_l6_bs64_ep200",
+                "--gpu_id", "0",
+                "--dataset_name", "vimo",
+                "--batch_size", "64",
+                "--max_epoch", "200",
+                "--vq_name", "rvq_bs256_finetune_ep10",
+                "--milestones", "6000",
+                "--warm_up_iter", "250",
+                "--n_layers", "6"
+            ],
+            "justMyCode": false
+        }
     ]
 }

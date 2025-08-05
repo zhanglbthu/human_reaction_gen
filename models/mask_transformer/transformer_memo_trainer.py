@@ -38,9 +38,18 @@ class MaskTransformerTrainer:
 
 
     def forward(self, batch_data):
-
+        
         imgs, motion, m_lens, video_path = batch_data # imgs: [B, T, C, H, W]
+        '''
+        imgs: [64, 16, 3, 224, 224]
+        motion: [64, 200, 263]
+        m_lens: [64]
+        '''
         at_features_mean, at_features = self.video_encoder(imgs.cuda()) # at_features_mean: [B, 512], at_features: [B, T, 512]
+        '''
+        at_features_mean: [64, 512]
+        at_features: [64, 16, 512]
+        '''
         conds = at_features_mean
         
         motion = motion.detach().float().to(self.device) # motion: [B, N, 263]
@@ -48,13 +57,12 @@ class MaskTransformerTrainer:
 
         # (b, n, q)
         code_idx, _ = self.vq_model.encode(motion)
+        '''
+        code_idx: [64, 50, 6]
+        '''
         m_lens = m_lens // 4
 
         conds = conds.to(self.device).float() if torch.is_tensor(conds) else conds
-
-        # loss_dict = {}
-        # self.pred_ids = []
-        # self.acc = []
 
         _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], conds, m_lens, at_features)
 
@@ -111,7 +119,6 @@ class MaskTransformerTrainer:
             self.t2m_transformer.load_state_dict(checkpoint[model_key])
 
         self.opt_t2m_transformer = optim.AdamW(self.t2m_transformer.parameters(), betas=(0.9, 0.99), lr=self.opt.lr, weight_decay=1e-5)
-        #self.opt_t2m_transformer = optim.AdamW(list(self.fuser.parameters()), betas=(0.9, 0.99), lr=self.opt.lr, weight_decay=1e-5) # frozen trans
         self.scheduler = optim.lr_scheduler.MultiStepLR(self.opt_t2m_transformer,
                                                         milestones=self.opt.milestones,
                                                         gamma=self.opt.gamma)

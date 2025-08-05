@@ -292,7 +292,8 @@ scale_resize = int(256 / 224 * config_input_size)
 
 train_pipeline = [
 dict(type='DecordInit'),
-dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config_num_frames, test_mode=True),   # TSN sampling strategy https://github.com/open-mmlab/mmaction2/issues/1379#issuecomment-1010938270
+# dict(type='SampleAllFrames'),
+dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config_num_frames, test_mode=True),   
 dict(type='DecordDecode'),
 #dict(type='Resize', scale=(-1, scale_resize)),
 dict(type='Resize', scale=(config_input_size, config_input_size), keep_ratio=False),
@@ -305,6 +306,7 @@ dict(type='ToTensor', keys=['imgs'])
 val_pipeline = [
 dict(type='DecordInit'),
 # config_num_frames = 16
+# dict(type='SampleAllFrames'),
 dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config_num_frames, test_mode=True),
 dict(type='DecordDecode'),
 # config_input_size = 224
@@ -317,6 +319,7 @@ dict(type='ToTensor', keys=['imgs'])
 
 test_pipeline = [
 dict(type='DecordInit'),
+# dict(type='SampleAllFrames'),
 dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config_num_frames, test_mode=True),
 dict(type='DecordDecode'),
 #dict(type='Resize', scale=(-1, scale_resize)),

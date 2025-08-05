@@ -2065,6 +2065,38 @@ class SampleFrames:
                     f'test_mode={self.test_mode})')
         return repr_str
 
+@PIPELINES.register_module()
+class SampleAllFrames:
+    """Sample all frames from the video.
+
+    This transform replaces SampleFrames to use **all available frames**.
+
+    Required keys: "total_frames", "start_index"
+    Modified keys: "frame_inds", "clip_len", "frame_interval", "num_clips"
+
+    Args:
+        test_mode (bool): Unused, retained for compatibility.
+    """
+
+    def __init__(self, test_mode=False):
+        self.test_mode = test_mode
+
+    def __call__(self, results):
+        total_frames = results['total_frames']
+        start_index = results.get('start_index', 0)
+
+        # 直接生成所有帧索引
+        frame_inds = np.arange(total_frames, dtype=np.int64) + start_index
+
+        results['frame_inds'] = frame_inds
+        results['clip_len'] = total_frames
+        results['frame_interval'] = 1
+        results['num_clips'] = 1
+
+        return results
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(test_mode={self.test_mode})'
 
 @PIPELINES.register_module()
 class FormatShape:
