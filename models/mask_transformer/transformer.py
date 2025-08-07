@@ -80,7 +80,6 @@ class OutputProcess(nn.Module):
         output = output.permute(1, 2, 0)  # [bs, e, seqlen]
         return output
 
-
 class MaskTransformer(nn.Module):
     def __init__(self, code_dim, cond_mode, latent_dim=256, ff_size=1024, num_layers=8,
                  num_heads=4, dropout=0.1, clip_dim=512, cond_drop_prob=0.1,
@@ -268,7 +267,6 @@ class MaskTransformer(nn.Module):
             force_mask = True
         else:
             raise NotImplementedError("Unsupported condition mode!!!")
-
 
         '''
         Prepare mask
@@ -612,7 +610,6 @@ class MaskTransformer(nn.Module):
         og_tokens_scores = og_tokens_scores.squeeze(-1)  # (b, seqlen)
 
         return og_tokens_scores
-
 
 class ResidualTransformer(nn.Module):
     def __init__(self, code_dim, cond_mode, latent_dim=256, ff_size=1024, num_layers=8, cond_drop_prob=0.1,

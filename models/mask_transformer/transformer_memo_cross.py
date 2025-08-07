@@ -175,18 +175,17 @@ class MaskTransformer(nn.Module):
         self.position_enc = PositionalEncoding(self.latent_dim, self.dropout)
         self.global_local_crossatt_block = CrossattBlock()
 
-        seqTransDecoderLayer = nn.TransformerDecoderLayer(d_model=self.latent_dim,
+        seqTransEncoderLayer = nn.TransformerEncoderLayer(d_model=self.latent_dim,
                                                           nhead=num_heads,
                                                           dim_feedforward=ff_size,
                                                           dropout=dropout,
                                                           activation='gelu')
 
-        self.seqTransDecoder = nn.TransformerDecoder(seqTransDecoderLayer,
+        self.seqTransEncoder = nn.TransformerEncoder(seqTransEncoderLayer,
                                                      num_layers=num_layers)
 
         self.encode_action = partial(F.one_hot, num_classes=self.num_actions)
 
-        # if self.cond_mode != 'no_cond':
         if self.cond_mode == 'video':
             self.cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
             #self.memo_emb = nn.Linear(self.clip_dim, self.latent_dim)
@@ -288,9 +287,6 @@ class MaskTransformer(nn.Module):
         :return:
             -logits: (b, num_token, seqlen)
         '''
-        cond = cond.unsqueeze(1) # (b, dim) -> (b, 1, dim)    # [32, 1, 512]
-        cond = self.global_local_crossatt_block(cond, memory) # [32, 1, 512]
-        cond = cond.squeeze(1) # (b, dim)
 
         cond = self.mask_cond(cond, force_mask=force_mask)
 
@@ -300,14 +296,21 @@ class MaskTransformer(nn.Module):
         x = self.input_process(x)
 
         cond = self.cond_emb(cond).unsqueeze(0) #(1, b, latent_dim)
-        memory = self.cond_emb(memory).permute((1, 0, 2)) # [frame_num, bs, latent_dim]
 
         x = self.position_enc(x)
         xseq = torch.cat([cond, x], dim=0) #(seqlen+1, b, latent_dim)
 
         padding_mask = torch.cat([torch.zeros_like(padding_mask[:, 0:1]), padding_mask], dim=1) #(b, seqlen+1)
         
-        output = self.seqTransDecoder(tgt=xseq, memory=memory, tgt_key_padding_mask=padding_mask)[1:] #(seqlen, b, e)
+        # TODO: add causal mask
+        seq_len = xseq.shape[0]
+        causal_mask = torch.triu(torch.ones((seq_len, seq_len), device=xseq.device), diagonal=1).bool()
+        
+        # 不使用cross attention, 定义dummy memory
+        # dummy_memory = torch.zeros_like(memory) 
+        output = self.seqTransEncoder(src=xseq,  
+                                      src_key_padding_mask=padding_mask, 
+                                      mask=causal_mask)[1:] #(seqlen, b, e)
         logits = self.output_process(output) #(seqlen, b, e) -> (b, ntoken, seqlen)
         return logits
 
@@ -331,6 +334,7 @@ class MaskTransformer(nn.Module):
         '''
         
         force_mask = False
+        # region condition processing
         if self.cond_mode == 'text':
             with torch.no_grad():
                 cond_vector = self.encode_text(y)
@@ -344,49 +348,15 @@ class MaskTransformer(nn.Module):
             force_mask = True
         else:
             raise NotImplementedError("Unsupported condition mode!!!")
-
-        '''
-        Prepare mask
-        '''
-        rand_time = uniform((bs,), device=device)   # [0.7, 0.5, ..., 0.6] (64)
-        rand_mask_probs = self.noise_schedule(rand_time) # consine_schedule
-        num_token_masked = (ntokens * rand_mask_probs).round().clamp(min=1)
-
-        batch_randperm = torch.rand((bs, ntokens), device=device).argsort(dim=-1)
-
-        # Positions to be MASKED are ALL TRUE
-        mask = batch_randperm < num_token_masked.unsqueeze(-1)
-        '''
-        mask: [False, True, False, True, True]
-        '''
-
-        # Positions to be MASKED must also be NON-PADDED
-        mask &= non_pad_mask
-        '''
-        mask: [False, True, False, False, False]
-        '''
-
-        # Note this is our training target, not input
-        labels = torch.where(mask, ids, self.mask_id)
-        '''
-        labels: [512, id2, 512, 512, 512]
-        '''
-
-        x_ids = ids.clone()
-
-        # TODO: from Bert Masking Scheme to GPT Masking Scheme
-        # Further Apply Bert Masking Scheme
-        # Step 1: 10% replace with an incorrect token
-        mask_rid = get_mask_subset_prob(mask, 0.1)
-        rand_id = torch.randint_like(x_ids, high=self.opt.num_tokens)
-        x_ids = torch.where(mask_rid, rand_id, x_ids)
-        # Step 2: 90% x 10% replace with correct token, and 90% x 88% replace with mask token
-        mask_mid = get_mask_subset_prob(mask & ~mask_rid, 0.88)
-
-        x_ids = torch.where(mask_mid, self.mask_id, x_ids)
-
-        logits = self.trans_forward(x_ids, cond_vector, ~non_pad_mask, force_mask, memory)
-        ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.mask_id)
+        # endregion
+        
+        # TODO: change to decoder-only transformer
+        x_ids = ids[:, :-1]  
+        labels = ids[:, 1:]  
+        padding_mask = ~non_pad_mask[:, :-1]  
+        
+        logits = self.trans_forward(x_ids, cond_vector, padding_mask, force_mask, memory)
+        ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.pad_id)
 
         return ce_loss, pred_id, acc
 
@@ -457,74 +427,43 @@ class MaskTransformer(nn.Module):
         # Start from all tokens being masked
         # ids: if padding_mask is True, use pad_id, else use mask_id
         ids = torch.where(padding_mask, self.pad_id, self.mask_id)
-        # scores: [b, seq_len], set to 1e5 for padding tokens, 0 for masked tokens
-        scores = torch.where(padding_mask, 1e5, 0.)
-        starting_temperature = temperature
 
-        for timestep, steps_until_x0 in zip(torch.linspace(0, 1, timesteps, device=device), reversed(range(timesteps))):
-            # timesteps: 10
-            # rand_mask_prob: 在时间控制下逐步解码token，每一步的mask比例逐渐减小
-            rand_mask_prob = self.noise_schedule(timestep)  # Tensor
-
-            '''
-            Maskout, and cope with variable length
-            '''
-            # num_token_masked: 对每个样本，根据rand_mask_prob和m_lens计算需要mask的token数量
-            num_token_masked = torch.round(rand_mask_prob * m_lens).clamp(min=1)  # (b, )
-
-            # 根据每个token的置信度scores
-            # 选择置信度最低的num_token_masked个token进行mask
-            sorted_indices = scores.argsort(
-                dim=1)  # (b, k), sorted_indices[i, j] = the index of j-th lowest element in scores on dim=1
-            ranks = sorted_indices.argsort(dim=1)  # (b, k), rank[i, j] = the rank (0: lowest) of scores[i, j] on dim=1
-            is_mask = (ranks < num_token_masked.unsqueeze(-1))
-            ids = torch.where(is_mask, self.mask_id, ids)
-
-            '''
-            Preparing input
-            '''
-            # (b, num_token, seqlen)
+        # TODO: change to autoregressive generation
+        for pos in range(seq_len):
+            # 创建当前位置的mask
+            pos_mask = torch.zeros_like(padding_mask)
+            pos_mask[:, pos] = True
+            
+            # 只mask当前位置
+            ids = torch.where(pos_mask & ~padding_mask, self.mask_id, ids)
+            
+            # 获取模型输出
             logits = self.forward_with_cond_scale(ids, cond_vector=cond_vector,
                                                   padding_mask=padding_mask,
                                                   cond_scale=cond_scale,
-                                                  force_mask=force_mask,
-                                                  memory=memory)
-
-            logits = logits.permute(0, 2, 1)  # (b, seqlen, ntoken), [32, 49, 512]
-            # clean low prob token
-            # 保留概率最高的一部分类别 (token)
-            # 避免采样出置信度极低的无意义 token
-            filtered_logits = top_k(logits, topk_filter_thres, dim=-1)
-
-            '''
-            Update ids
-            '''
-            temperature = starting_temperature
-            if gsample:  
-                pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)  # (b, seqlen)
-            else:  
-                probs = F.softmax(filtered_logits / temperature, dim=-1)  # (b, seqlen, ntoken)
+                                                  force_mask=force_mask)
+            
+            logits = logits.permute(0, 2, 1)  # (b, seqlen, ntoken)
+            
+            # 只处理当前位置的logits
+            pos_logits = logits[:, pos, :].unsqueeze(1)  # (b, 1, ntoken)
+            
+            # 过滤低概率token
+            filtered_logits = top_k(pos_logits, topk_filter_thres, dim=-1)
+            
+            # 采样新token
+            if gsample:
+                pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+            else:
+                probs = F.softmax(filtered_logits / temperature, dim=-1)
                 pred_ids = Categorical(probs).sample()  # (b, seqlen)
-
-            # is_mask: [32, 49]
-            # pred_ids: [32, 49]
-            # ids: [32, 49]
-            ids = torch.where(is_mask, pred_ids, ids)
-
-            '''
-            Updating scores
-            '''
-            probs_without_temperature = logits.softmax(dim=-1)  # (b, seqlen, ntoken)
-            scores = probs_without_temperature.gather(2, pred_ids.unsqueeze(dim=-1))  # (b, seqlen, 1)
-            scores = scores.squeeze(-1)  # (b, seqlen)
-
-            # We do not want to re-mask the previously kept tokens, or pad tokens
-            scores = scores.masked_fill(~is_mask, 1e5)
+            
+            # 更新当前位置的token
+            ids = torch.where(pos_mask & ~padding_mask, pred_ids, ids)
 
         ids = torch.where(padding_mask, -1, ids)
         # print("Final", ids.max(), ids.min())
         return ids
-
 
     @torch.no_grad()
     @eval_decorator
