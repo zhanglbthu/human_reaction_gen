@@ -74,7 +74,7 @@ def get_opt(opt_path, device, **kwargs):
         opt.max_motion_frame = 196
         opt.max_motion_token = 55
     elif opt.dataset_name == 'vimo':
-        opt.data_root = '/root/autodl-tmp/Data/VIMO/'
+        opt.data_root = './Data/VIMO/'
         opt.motion_dir = pjoin(opt.data_root, 'vector_263')
         opt.joints_num = 22
         opt.dim_pose = 263

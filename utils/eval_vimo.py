@@ -1464,7 +1464,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                               repeat_id, eval_wrapper, time_steps,
                                               cond_scale, temperature, topkr, gsample=True, 
                                               force_mask=False, cal_mm=True, res_cond_scale=5,
-                                              save_anim=False, out_dir='/root/autodl-tmp/Data/eval', plot_func=None):
+                                              save_anim=False, out_dir='./Data/eval', plot_func=None):
                                               
     trans.eval()
     vq_model.eval()
