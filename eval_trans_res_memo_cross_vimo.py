@@ -125,7 +125,7 @@ def load_clip_to_cpu(model_arch):
                     "text_block": "ResidualAttentionBlock",
                     "use_custom_attention": True,
                     "context_length": 30,
-                    "temporal_length": 16,
+                    "temporal_length": 50,
                     "vision_depth": 0,
                     "language_depth": 1,
                     "vision_ctx": 0,
@@ -229,7 +229,7 @@ if __name__ == '__main__':
     std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'std.npy'))
 
     eval_val_dataset = VimoDataset(opt, mean, std, data_prefix=opt.data_root, ann_file=opt.test_txt, pipeline=val_pipeline)
-    eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=True, pin_memory=True)
+    eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=False, pin_memory=True)
     print('Preprocessing data...')
     eval_val_loader = [batch_data for batch_data in tqdm(eval_val_loader)]
 
