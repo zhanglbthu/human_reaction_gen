@@ -1464,7 +1464,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                               repeat_id, eval_wrapper, time_steps,
                                               cond_scale, temperature, topkr, gsample=True, 
                                               force_mask=False, cal_mm=True, res_cond_scale=5,
-                                              save_anim=False, out_dir='/root/autodl-tmp/Data/eval', plot_func=None):
+                                              save_anim=False, out_dir='./Data/eval', plot_func=None):
                                               
     trans.eval()
     vq_model.eval()
@@ -1507,12 +1507,12 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                       gsample=gsample, force_mask=force_mask, memory=at_features)
                 # mids: [B, 49]
                 # Mask Transformer在video condition下生成Base-layer的VQ Token id
-                
-                pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
+                mids.unsqueeze_(-1)
+                # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
                 # pred_ids: [B, 49, 6], Token Prediction
                 # Residual Transformer生成Residual-layer的VQ Token id
 
-                pred_motions = vq_model.forward_decoder(pred_ids)
+                pred_motions = vq_model.forward_decoder(mids)
                 # pred_motions: [B, 196, 263]
 
                 em_pred = eval_wrapper.get_motion_embeddings(pred_motions.clone(), m_length)
@@ -1526,9 +1526,10 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                   temperature=temperature, topk_filter_thres=topkr,
                                   force_mask=force_mask, memory=at_features)
 
-            pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
+            # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
+            mids.unsqueeze_(-1)
             
-            pred_motions = vq_model.forward_decoder(pred_ids)
+            pred_motions = vq_model.forward_decoder(mids)
             # pred_motions: [B, 196, 263]
 
             em_pred = eval_wrapper.get_motion_embeddings(pred_motions.clone(), m_length)

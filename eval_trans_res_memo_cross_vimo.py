@@ -188,7 +188,7 @@ if __name__ == '__main__':
     os.makedirs(out_dir, exist_ok=True)
 
     if opt.dataset_name == "vimo":
-        opt.data_root = '/root/autodl-tmp/Data/VIMO/'
+        opt.data_root = './Data/VIMO/'
         opt.nb_joints = 22
         dim_pose = 263
         dataset_opt_path = './checkpoints/vimo/Comp_v6_KLD005/opt.txt'
@@ -229,11 +229,11 @@ if __name__ == '__main__':
     std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'std.npy'))
 
     eval_val_dataset = VimoDataset(opt, mean, std, data_prefix=opt.data_root, ann_file=opt.test_txt, pipeline=val_pipeline)
-    eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=True, pin_memory=True)
+    eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=False, pin_memory=True)
     print('Preprocessing data...')
     eval_val_loader = [batch_data for batch_data in tqdm(eval_val_loader)]
 
-    out_dir = '/root/autodl-tmp/Data/eval'
+    out_dir = './Data/eval'
     os.makedirs(out_dir, exist_ok=True)
     
     # model_dir = pjoin(opt.)
@@ -258,7 +258,7 @@ if __name__ == '__main__':
         div = []
         mm = []
 
-        repeat_time = 1
+        repeat_time = 5
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm = \

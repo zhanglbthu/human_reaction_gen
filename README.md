@@ -20,7 +20,7 @@ Visit [[Google Drive]](https://drive.google.com/file/d/1KEi6r7vIFnkoLLrZaN2ZKUzQ
 
 ### 3. Dataset
 
-Download [ViMo](https://drive.google.com/file/d/182yLuEVtESIrVXshrJeNS8dbx6sxGB13/view?usp=sharing) dataset, then unzip and place the result in `/root/autodl-tmp/Data/VIMO`.
+Download [ViMo](https://drive.google.com/file/d/182yLuEVtESIrVXshrJeNS8dbx6sxGB13/view?usp=sharing) dataset, then unzip and place the result in `./Data/VIMO`.
 
 #### 
 

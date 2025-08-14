@@ -267,7 +267,7 @@ class VimoDataset(VimoBaseDataset):
 
     def load_annotations(self):
         '''
-        self.data_prefix: /root/autodl-tmp/Data/VIMO
+        self.data_prefix: ./Data/VIMO
         self.ann_file: test.txt
         '''
         video_infos = []

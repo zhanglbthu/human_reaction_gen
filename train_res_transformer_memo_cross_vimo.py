@@ -147,7 +147,7 @@ if __name__ == '__main__':
     os.makedirs(opt.log_dir, exist_ok=True)
     
     if opt.dataset_name == "vimo":
-        opt.data_root = '/root/autodl-tmp/Data/VIMO/'
+        opt.data_root = './Data/VIMO/'
         opt.motion_dir = pjoin(opt.data_root, 'vector_263')
         opt.joints_num = 22
         # opt.max_motion_len = 55
