@@ -8,6 +8,7 @@ import codecs as cs
 import os.path as osp
 import copy
 from abc import ABCMeta, abstractmethod
+import torch.nn.functional as F
 
 import warnings
 warnings.filterwarnings(action='ignore', module='mmcv', category=UserWarning)
@@ -174,7 +175,6 @@ class VimoMotionDatasetEval(Dataset):
         
         return motion, m_length
     
-
 PIPELINES = Registry('pipeline')
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
@@ -237,17 +237,28 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         "Z Normalization"
         motion = (motion - self.mean) / self.std
 
+        # TODO: align video and motion in frame level
+        imgs = results['imgs'] # [T, 3, 224, 224]
+        T, C, H, W = imgs.shape
+        
+        # change: 视频线性插值到m_length帧
+        imgs = imgs.permute(1, 0, 2, 3).unsqueeze(0)  # [1, C, T, H, W]
+        imgs_resampled = F.interpolate(
+            imgs, size=(m_length, H, W), mode='trilinear', align_corners=False
+        ).squeeze(0).permute(1, 0, 2, 3)                 # [m_length, C, H, W]
+        
         if m_length < self.max_motion_length:
             motion = np.concatenate([motion,
                                      np.zeros((self.max_motion_length - m_length, motion.shape[1]))
                                      ], axis=0)
+            # change: padding imgs
+            pad_T = self.max_motion_length - m_length
+            pad_imgs = torch.zeros(
+                (pad_T, C, H, W), dtype=imgs_resampled.dtype, device=imgs_resampled.device
+            )
+            imgs_padded = torch.cat([imgs_resampled, pad_imgs], dim=0)  # [max_T, C, H, W]
 
-        # del results['label']
-        # results['motion'] = motion
-        # results['motion_length'] = m_length
-        # return results
-
-        return results['imgs'], motion, m_length, results['filename']
+        return imgs_padded, motion, m_length, results['filename']
 
     def __len__(self):
         """Get the size of the dataset."""
@@ -285,14 +296,13 @@ class VimoDataset(VimoBaseDataset):
 
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
 config_input_size = 224
-config_num_frames = 16
+config_num_frames = 100
 config_num_clip = 1
 config_num_crop = 1
 scale_resize = int(256 / 224 * config_input_size)
 
 train_pipeline = [
 dict(type='DecordInit'),
-# dict(type='SampleAllFrames'),
 dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config_num_frames, test_mode=True),   
 dict(type='DecordDecode'),
 #dict(type='Resize', scale=(-1, scale_resize)),
@@ -305,11 +315,8 @@ dict(type='ToTensor', keys=['imgs'])
 
 val_pipeline = [
 dict(type='DecordInit'),
-# config_num_frames = 16
-# dict(type='SampleAllFrames'),
 dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config_num_frames, test_mode=True),
 dict(type='DecordDecode'),
-# config_input_size = 224
 dict(type='Resize', scale=(config_input_size, config_input_size), keep_ratio=False),
 dict(type='Normalize', **img_norm_cfg),
 dict(type='FormatShape', input_format='NCHW'),

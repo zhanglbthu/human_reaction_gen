@@ -202,6 +202,7 @@ class MaskTransformer(nn.Module):
         _num_tokens = opt.num_tokens + 2  # two dummy tokens, one for masking, one for padding
         self.mask_id = opt.num_tokens
         self.pad_id = opt.num_tokens + 1
+        # TODO: add BOS Token
 
         self.output_process = OutputProcess_Bert(out_feats=opt.num_tokens, latent_dim=latent_dim)
 

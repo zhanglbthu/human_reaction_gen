@@ -41,14 +41,15 @@ class MaskTransformerTrainer:
         
         imgs, motion, m_lens, video_path = batch_data # imgs: [B, T, C, H, W]
         '''
-        imgs: [64, 16, 3, 224, 224]
+        imgs: [64, 200, 3, 224, 224]
         motion: [64, 200, 263]
         m_lens: [64]
         '''
+        imgs = imgs[:, ::4, :, :, :] # [B, 50, C, H, W]
         at_features_mean, at_features = self.video_encoder(imgs.cuda()) # at_features_mean: [B, 512], at_features: [B, T, 512]
         '''
         at_features_mean: [64, 512]
-        at_features: [64, 16, 512]
+        at_features: [64, 50, 512]
         '''
         conds = at_features_mean
         

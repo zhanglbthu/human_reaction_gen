@@ -859,8 +859,6 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
             del t2m_trans_state_dict[e]
         state = {
             't2m_transformer': t2m_trans_state_dict,
-            # 'opt_t2m_transformer': self.opt_t2m_transformer.state_dict(),
-            # 'scheduler':self.scheduler.state_dict(),
             'ep': ep,
         }
         torch.save(state, file_name)
@@ -878,14 +876,13 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
     else:
         cond_scale = 4
 
-    # print(num_quantizer)
-
-    # assert num_quantizer >= len(time_steps) and num_quantizer >= len(cond_scales)
-
     nb_sample = 0
     # for i in range(1):
     for batch in val_loader:
         imgs, pose, m_length, video_path = batch
+
+        # downsample the imgs to 50 frames
+        imgs = imgs[:, ::4, :, :, :] # [B, 50, C, H, W]
         at_features_mean, at_features = video_encoder(imgs.cuda())
 
         m_length = m_length.cuda()
