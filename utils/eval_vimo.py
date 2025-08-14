@@ -891,7 +891,7 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
         # num_joints = 21 if pose.shape[-1] == 251 else 22
 
         # (b, seqlen)
-        mids = trans.generate(at_features_mean, m_length//4, time_steps, cond_scale, temperature=1, memory=at_features)
+        mids = trans.generate(m_length//4, time_steps, cond_scale, temperature=1, frame_conds=at_features)
 
         # motion_codes = motion_codes.permute(0, 2, 1)
         mids.unsqueeze_(-1)

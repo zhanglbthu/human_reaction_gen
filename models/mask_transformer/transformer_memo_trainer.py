@@ -51,7 +51,6 @@ class MaskTransformerTrainer:
         at_features_mean: [64, 512]
         at_features: [64, 50, 512]
         '''
-        conds = at_features_mean
         
         motion = motion.detach().float().to(self.device) # motion: [B, N, 263]
         m_lens = m_lens.detach().long().to(self.device) # m_lens: [B, 1]
@@ -63,9 +62,7 @@ class MaskTransformerTrainer:
         '''
         m_lens = m_lens // 4
 
-        conds = conds.to(self.device).float() if torch.is_tensor(conds) else conds
-
-        _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], conds, m_lens, at_features)
+        _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], m_lens, at_features)
 
         return _loss, _acc
 
@@ -138,6 +135,7 @@ class MaskTransformerTrainer:
         print('Iters Per Epoch, Training: %d, Validation: %d' % (len(train_loader), len(val_loader)))
         logs = defaultdict(def_value, OrderedDict())
 
+        # change: remove init evaluation for debugging
         best_fid, best_div, writer = evaluation_mask_transformer_memo(
             self.opt.save_root, eval_val_loader, self.t2m_transformer, self.vq_model, self.video_encoder,
             self.logger, epoch,
@@ -145,7 +143,7 @@ class MaskTransformerTrainer:
             eval_wrapper=eval_wrapper, plot_func=plot_eval, 
             save_ckpt=True, save_anim=True
         )
-        #breakpoint()
+
         best_loss = 100
         best_acc = 0
 
@@ -332,13 +330,16 @@ class ResidualTransformerTrainer:
         print('Iters Per Epoch, Training: %d, Validation: %d' % (len(train_loader), len(val_loader)))
         logs = defaultdict(def_value, OrderedDict())
 
-        best_fid, best_div, writer = evaluation_res_transformer_memo(
-            self.opt.save_root, eval_val_loader, self.res_transformer, self.vq_model, self.video_encoder,
-            self.logger, epoch,
-            best_fid=100, best_div=100,
-            eval_wrapper=eval_wrapper, plot_func=plot_eval, 
-            save_ckpt=True, save_anim=True
-        )
+        # change: remove init evaluation for debugging
+        # best_fid, best_div, writer = evaluation_res_transformer_memo(
+        #     self.opt.save_root, eval_val_loader, self.res_transformer, self.vq_model, self.video_encoder,
+        #     self.logger, epoch,
+        #     best_fid=100, best_div=100,
+        #     eval_wrapper=eval_wrapper, plot_func=plot_eval, 
+        #     save_ckpt=True, save_anim=True
+        # )
+        best_fid = 100
+        best_div = 100
         best_loss = 100
         best_acc = 0
 

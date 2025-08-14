@@ -256,9 +256,15 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
             pad_imgs = torch.zeros(
                 (pad_T, C, H, W), dtype=imgs_resampled.dtype, device=imgs_resampled.device
             )
-            imgs_padded = torch.cat([imgs_resampled, pad_imgs], dim=0)  # [max_T, C, H, W]
-
-        return imgs_padded, motion, m_length, results['filename']
+            imgs = torch.cat([imgs_resampled, pad_imgs], dim=0)  # [max_T, C, H, W]
+        else:
+            # crop motion and imgs to max_motion_length
+            motion = motion[:self.max_motion_length]
+            imgs = imgs_resampled[:self.max_motion_length]
+        
+        assert imgs.shape[0] == motion.shape[0] == self.max_motion_length
+        
+        return imgs, motion, m_length, results['filename']
 
     def __len__(self):
         """Get the size of the dataset."""

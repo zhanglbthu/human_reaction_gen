@@ -172,6 +172,7 @@ class MaskTransformer(nn.Module):
         Preparing Networks
         '''
         self.input_process = InputProcess(self.code_dim, self.latent_dim)
+        self.fuse_proj = nn.Linear(self.latent_dim * 2, self.latent_dim)
         self.position_enc = PositionalEncoding(self.latent_dim, self.dropout)
         self.global_local_crossatt_block = CrossattBlock()
 
@@ -199,14 +200,16 @@ class MaskTransformer(nn.Module):
             raise KeyError("Unsupported condition mode!!!")
 
         # opt.num_tokens: 512
-        _num_tokens = opt.num_tokens + 2  # two dummy tokens, one for masking, one for padding
+        # change: add bos id
+        _num_tokens = opt.num_tokens + 3  # two dummy tokens, one for masking, one for padding
         self.mask_id = opt.num_tokens
         self.pad_id = opt.num_tokens + 1
-        # TODO: add BOS Token
+        self.bos_id  = opt.num_tokens + 2
 
         self.output_process = OutputProcess_Bert(out_feats=opt.num_tokens, latent_dim=latent_dim)
 
         self.token_emb = nn.Embedding(_num_tokens, self.code_dim)
+        self.frame_cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
 
         self.apply(self.__init_weights)
 
@@ -278,171 +281,123 @@ class MaskTransformer(nn.Module):
         else:
             return cond
 
-    def trans_forward(self, motion_ids, cond, padding_mask, force_mask=False, memory=None):
-        '''
-        :param motion_ids: (b, seqlen)
-        :padding_mask: (b, seqlen), all pad positions are TRUE else FALSE
-        :param cond: (b, embed_dim) for text, (b, num_actions) for action
-        :param force_mask: boolean
-        :memory: (b, frame_num, clip_dim)
-        :return:
-            -logits: (b, num_token, seqlen)
-        '''
+    def trans_forward(self, motion_ids, padding_mask, frame_conds):
+        """
+        motion_in_ids: [B, T]           # BOS+右移后的输入 ids
+        frame_conds:   [B, T, clip_dim] # 逐帧视频特征
+        padding_mask:  [B, T]           # True=屏蔽无效
+        return logits: (B, vocab, T)
+        """
 
-        cond = self.mask_cond(cond, force_mask=force_mask)
+        B, T = motion_ids.shape
 
-        # token_emb (nn.Embedding): 将每个 token ID 映射为 code_dim 维的向量
-        x = self.token_emb(motion_ids)
-        # (b, seqlen, d) -> (seqlen, b, latent_dim)
-        x = self.input_process(x)
-
-        cond = self.cond_emb(cond).unsqueeze(0) #(1, b, latent_dim)
-
+        # 1) token embedding
+        tok = self.token_emb(motion_ids)               # [B, T, code_dim]
+        tok = self.input_process(tok)                  # [T, B, latent]
+        tok = tok.transpose(0,1).contiguous()          # [B, T, latent]
+        vid = self.frame_cond_emb(frame_conds)         # [B, T, latent]
+        
+        # 2) frame concatenation
+        x = torch.cat([tok, vid], dim=-1)              # [B, T, 2*latent]
+        x = self.fuse_proj(x)                          # [B, T, latent]
+        
+        # 3) positional encoding
+        x = x.transpose(0,1).contiguous()              # [T, B, latent]
         x = self.position_enc(x)
-        xseq = torch.cat([cond, x], dim=0) #(seqlen+1, b, latent_dim)
-
-        padding_mask = torch.cat([torch.zeros_like(padding_mask[:, 0:1]), padding_mask], dim=1) #(b, seqlen+1)
         
-        # TODO: add causal mask
-        seq_len = xseq.shape[0]
-        causal_mask = torch.triu(torch.ones((seq_len, seq_len), device=xseq.device), diagonal=1).bool()
+        # 4) causal mask
+        i = torch.arange(T, device=x.device)
+        causal_mask = (i[None, :] > i[:, None])
+        causal_mask = causal_mask.masked_fill(causal_mask, float('-inf')).to(x.dtype)
         
-        # 不使用cross attention, 定义dummy memory
-        # dummy_memory = torch.zeros_like(memory) 
-        output = self.seqTransEncoder(src=xseq,  
-                                      src_key_padding_mask=padding_mask, 
-                                      mask=causal_mask)[1:] #(seqlen, b, e)
-        logits = self.output_process(output) #(seqlen, b, e) -> (b, ntoken, seqlen)
+        h = self.seqTransEncoder(x, mask=causal_mask, src_key_padding_mask=padding_mask)  # [T,B,latent]
+        logits = self.output_process(h)
         return logits
 
-    def forward(self, ids, y, m_lens, memory):
-        '''
-        :param ids: (b, n); [64, 50]
-        :param y: raw text for cond_mode=text, (b, ) for cond_mode=action; [64, 512]
-        :m_lens: (b,); [64]
-        :memory: (b, frame_num, clip_dim); [64, 16, 512]
-        :return:
-        '''
+    def forward(self, ids, m_lens, frame_conds):
+        """
+        ids:          [B, T]            # 目标 token (不含 BOS)
+        m_lens:       [B]               # 有效长度 (token 级)
+        frame_conds:  [B, T, clip_dim]  # 逐帧视频特征 (与 ids 对齐)
+        """
 
-        bs, ntokens = ids.shape
+        B, T = ids.shape
         device = ids.device
 
-        # Positions that are PADDED are ALL FALSE
-        non_pad_mask = lengths_to_mask(m_lens, ntokens) #(b, n)
+        # 1) padding mask
+        non_pad_mask = lengths_to_mask(m_lens, T) #(b, n)
         ids = torch.where(non_pad_mask, ids, self.pad_id)
-        '''
-        ids: [id1, id2, id3, id4, id5] -> [id1, id2, id3, 513, 513]
-        '''
+
+        # 2) BOS + teacher forcing
+        bos = torch.full((B,1), self.bos_id, device=device, dtype=ids.dtype)
+        x_ids = torch.cat([bos, ids[:, :-1]], dim=1)      # BOS+右移
+        labels = ids 
+
+        padding_mask = ~non_pad_mask
         
-        force_mask = False
-        # region condition processing
-        if self.cond_mode == 'text':
-            with torch.no_grad():
-                cond_vector = self.encode_text(y)
-        elif self.cond_mode == 'video':
-            with torch.no_grad():
-                cond_vector = y
-        elif self.cond_mode == 'action':
-            cond_vector = self.enc_action(y).to(device).float()
-        elif self.cond_mode == 'uncond':
-            cond_vector = torch.zeros(bs, self.latent_dim).float().to(device)
-            force_mask = True
-        else:
-            raise NotImplementedError("Unsupported condition mode!!!")
-        # endregion
-        
-        # TODO: change to decoder-only transformer
-        x_ids = ids[:, :-1]  
-        labels = ids[:, 1:]  
-        padding_mask = ~non_pad_mask[:, :-1]  
-        
-        logits = self.trans_forward(x_ids, cond_vector, padding_mask, force_mask, memory)
+        logits = self.trans_forward(x_ids, padding_mask, frame_conds)
         ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.pad_id)
 
         return ce_loss, pred_id, acc
 
     def forward_with_cond_scale(self,
                                 motion_ids,
-                                cond_vector,
+                                frame_conds,
                                 padding_mask,
-                                cond_scale=3,
-                                force_mask=False,
-                                memory=None):
-        # bs = motion_ids.shape[0]
-        # if cond_scale == 1:
-        if force_mask:
-            # 强制mask掉输入条件
-            return self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, memory=memory)
+                                cond_scale=3):
 
-        logits = self.trans_forward(motion_ids, cond_vector, padding_mask, memory=memory)
-        if cond_scale == 1:
-            return logits
-
-        aux_logits = self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, memory=memory)
-
-        # Classifier-Free Guidance
-        scaled_logits = aux_logits + (logits - aux_logits) * cond_scale
-        return scaled_logits
+        logits = self.trans_forward(motion_ids, padding_mask, frame_conds)
+        
+        return logits
 
     @torch.no_grad()
     @eval_decorator
     def generate(self,
-                 conds, # attention_features_mean: [B, 512]
                  m_lens,
                  timesteps: int,
-                 cond_scale: int,
+                 cond_scale=3,
                  temperature=1,
                  topk_filter_thres=0.9,
                  gsample=False,
-                 force_mask=False,
-                 memory=None
+                 frame_conds=None,
                  ):
-        # print(self.opt.num_quantizers)
-        # assert len(timesteps) >= len(cond_scales) == self.opt.num_quantizers
+        '''
+        frame_conds: [B, T, clip_dim]  # 逐帧视频特征 (与 ids 对齐)
+        '''
 
         device = next(self.parameters()).device
-        seq_len = max(m_lens)
+        # seq_len = max(m_lens) + 1  # +1 for BOS
+        seq_len = 50
         batch_size = len(m_lens)
+        frame_conds = frame_conds.to(device)  # (B, T, clip_dim)
 
-        if self.cond_mode == 'text':
-            with torch.no_grad():
-                cond_vector = self.encode_text(conds)
-        elif self.cond_mode == 'video':
-            with torch.no_grad():
-                cond_vector = conds
-        elif self.cond_mode == 'action':
-            cond_vector = self.enc_action(conds).to(device)
-        elif self.cond_mode == 'uncond':
-            cond_vector = torch.zeros(batch_size, self.latent_dim).float().to(device)
-        else:
-            raise NotImplementedError("Unsupported condition mode!!!")
+        # -------- padding_mask --------
+        padding_mask = torch.cat([
+            torch.zeros((batch_size, 1), dtype=torch.bool, device=device),  # BOS 永远不是 pad
+            ~lengths_to_mask(m_lens, 50)[:, :-1]  # 后面的照常 pad
+        ], dim=1)
 
-        # mask padding tokens
-        # e.g. m_lens = [3, 5, 2], seq_len = 5
-        # padding_mask = [[False, False, False, True, True],
-        #                 [False, False, False, False, False],
-        #                 [False, False, True, True, True]]
-        padding_mask = ~lengths_to_mask(m_lens, seq_len)
-        # print(padding_mask.shape, )
+        # -------- 初始化 ids --------
+        bos_col = torch.full((batch_size, 1), self.bos_id, device=device)
+        rest_ids = torch.where(padding_mask, self.pad_id, self.mask_id)
+        ids = torch.cat([bos_col, rest_ids[:, :-1]], dim=1) # [B, seq_len]
 
-        # Start from all tokens being masked
-        # ids: if padding_mask is True, use pad_id, else use mask_id
-        ids = torch.where(padding_mask, self.pad_id, self.mask_id)
-
-        # TODO: change to autoregressive generation
+        # -------- autoregressive 生成 --------
         for pos in range(seq_len):
             # 创建当前位置的mask
             pos_mask = torch.zeros_like(padding_mask)
-            pos_mask[:, pos] = True
+            
+            if pos + 1 < seq_len:
+                pos_mask[:, pos + 1] = True
             
             # 只mask当前位置
             ids = torch.where(pos_mask & ~padding_mask, self.mask_id, ids)
             
             # 获取模型输出
-            logits = self.forward_with_cond_scale(ids, cond_vector=cond_vector,
+            logits = self.forward_with_cond_scale(motion_ids=ids, 
+                                                  frame_conds=frame_conds,
                                                   padding_mask=padding_mask,
-                                                  cond_scale=cond_scale,
-                                                  force_mask=force_mask)
+                                                  cond_scale=cond_scale)
             
             logits = logits.permute(0, 2, 1)  # (b, seqlen, ntoken)
             
@@ -457,13 +412,18 @@ class MaskTransformer(nn.Module):
                 pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
             else:
                 probs = F.softmax(filtered_logits / temperature, dim=-1)
-                pred_ids = Categorical(probs).sample()  # (b, seqlen)
+                pred_ids = Categorical(probs).sample()  # (b, 1)
             
-            # 更新当前位置的token
-            ids = torch.where(pos_mask & ~padding_mask, pred_ids, ids)
+            # 用当前pos预测更新下一个位置的ids
+            if pos + 1 < seq_len:
+                ids = torch.where(pos_mask & ~padding_mask, pred_ids, ids)
+            else:
+                # concatenate the last predicted id
+                ids = torch.cat([ids, pred_ids], dim=1)
+        # remove bos id
+        ids = ids[:, 1:]
+        ids = torch.where(~lengths_to_mask(m_lens, 50), -1, ids)
 
-        ids = torch.where(padding_mask, -1, ids)
-        # print("Final", ids.max(), ids.min())
         return ids
 
     @torch.no_grad()
