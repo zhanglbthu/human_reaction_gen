@@ -71,6 +71,7 @@ def load_trans_model(model_opt, which_model):
                                       cond_drop_prob=model_opt.cond_drop_prob,
                                       clip_version=clip_version,
                                       opt=model_opt)
+
     ckpt = torch.load(pjoin(model_opt.checkpoints_dir, model_opt.dataset_name, model_opt.name, 'model', which_model),
                       map_location=opt.device)
     model_key = 't2m_transformer' if 't2m_transformer' in ckpt else 'trans'
@@ -234,6 +235,7 @@ if __name__ == '__main__':
     eval_val_loader = [batch_data for batch_data in tqdm(eval_val_loader)]
 
     out_dir = './Data/eval'
+    out_dir = os.path.join(out_dir, opt.name)
     os.makedirs(out_dir, exist_ok=True)
     
     # model_dir = pjoin(opt.)
@@ -248,7 +250,7 @@ if __name__ == '__main__':
         res_model.eval()
         video_encoder.eval()
 
-        t2m_transformer.to(opt.device)
+        t2m_transformer.to(opt.device) 
         vq_model.to(opt.device)
         res_model.to(opt.device)
         video_encoder.to(opt.device)
