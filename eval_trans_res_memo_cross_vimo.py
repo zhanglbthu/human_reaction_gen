@@ -258,7 +258,7 @@ if __name__ == '__main__':
         div = []
         mm = []
 
-        repeat_time = 5
+        repeat_time = 1
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm = \

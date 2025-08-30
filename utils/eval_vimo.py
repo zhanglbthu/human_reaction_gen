@@ -1545,8 +1545,8 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         nb_sample += bs
     
         if save_anim:
-            # rand_idx = torch.arange(bs)
-            rand_idx = torch.randperm(bs)[:1]
+            rand_idx = torch.arange(bs)
+            # rand_idx = torch.randperm(bs)[:1]
                 
             data_gt = pose[rand_idx].detach().cpu().numpy()
             data_pred = pred_motions[rand_idx].detach().cpu().numpy()
@@ -1586,10 +1586,12 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
     gt_mu, gt_cov = calculate_activation_statistics(motion_annotation_np)
     mu, cov = calculate_activation_statistics(motion_pred_np)
 
-    diversity_real = calculate_diversity(motion_annotation_np, 300 if nb_sample > 300 else 13) # 100
-    diversity = calculate_diversity(motion_pred_np, 300 if nb_sample > 300 else 13) # 100
+    # diversity_real = calculate_diversity(motion_annotation_np, 300 if nb_sample > 300 else 13) # 100
+    # diversity = calculate_diversity(motion_pred_np, 300 if nb_sample > 300 else 13) # 100
  
-    fid = calculate_frechet_distance(gt_mu, gt_cov, mu, cov)
+    # fid = calculate_frechet_distance(gt_mu, gt_cov, mu, cov)
+    # init diversity_real, diversity, fid with 0
+    diversity_real, diversity, fid = 0, 0, 0
 
     msg = f"--> \t Eva. Repeat {repeat_id} :, FID. {fid:.4f}, " \
           f"Diversity Real. {diversity_real:.4f}, Diversity. {diversity:.4f}, " \

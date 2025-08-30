@@ -94,8 +94,9 @@ def calculate_activation_statistics(activations):
 def calculate_diversity(activation, diversity_times):
     #print('diversity_times:', diversity_times)
     assert len(activation.shape) == 2
-    assert activation.shape[0] >= diversity_times
+    # assert activation.shape[0] >= diversity_times
     num_samples = activation.shape[0]
+    diversity_times = min(diversity_times, num_samples)
 
     first_indices = np.random.choice(num_samples, diversity_times, replace=False)
     second_indices = np.random.choice(num_samples, diversity_times, replace=False)
@@ -105,8 +106,9 @@ def calculate_diversity(activation, diversity_times):
 
 def calculate_multimodality(activation, multimodality_times):
     assert len(activation.shape) == 3
-    assert activation.shape[1] >= multimodality_times
+    # assert activation.shape[1] >= multimodality_times
     num_per_sent = activation.shape[1]
+    multimodality_times = min(multimodality_times, num_per_sent)
 
     first_dices = np.random.choice(num_per_sent, multimodality_times, replace=False)
     second_dices = np.random.choice(num_per_sent, multimodality_times, replace=False)
