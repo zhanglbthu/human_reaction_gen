@@ -234,6 +234,7 @@ if __name__ == '__main__':
     eval_val_loader = [batch_data for batch_data in tqdm(eval_val_loader)]
 
     out_dir = './Data/eval'
+    out_dir = os.path.join(out_dir, opt.name)
     os.makedirs(out_dir, exist_ok=True)
     
     # model_dir = pjoin(opt.)
@@ -258,7 +259,7 @@ if __name__ == '__main__':
         div = []
         mm = []
 
-        repeat_time = 1
+        repeat_time = 5
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm = \

@@ -1556,7 +1556,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
             video_path_save = [video_path[idx] for idx in rand_idx.tolist()]
             length_path_save = [m_length[idx].item() for idx in rand_idx.tolist()]
 
-            save_dir = os.path.join(out_dir, 'animation', 'E%04d' % repeat_id, 'batch_%04d' % i)
+            save_dir = os.path.join(out_dir, 'E%04d' % repeat_id, 'batch_%04d' % i)
             os.makedirs(save_dir, exist_ok=True)
             pred_save_dir = os.path.join(save_dir, 'pred')
             gt_save_dir = os.path.join(save_dir, 'gt')
