@@ -27,7 +27,6 @@ class MaskTransformerTrainer:
         if args.is_train:
             self.logger = SummaryWriter(args.log_dir)
 
-
     def update_lr_warm_up(self, nb_iter, warm_up_iter, lr):
 
         current_lr = lr * (nb_iter + 1) / (warm_up_iter + 1)
@@ -35,7 +34,6 @@ class MaskTransformerTrainer:
             param_group["lr"] = current_lr
 
         return current_lr
-
 
     def forward(self, batch_data):
         

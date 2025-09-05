@@ -3,7 +3,7 @@ export CUDA_VISIBLE_DEVICES=0
 python eval_trans_res_memo_cross_vimo.py \
     --dataset_name vimo \
     --vq_name rvq_bs256_finetune_ep10 \
-    --name mtrans_auto \
+    --name mtrans_ar_fc_explosion \
     --res_name rtrans_memo_cross_l6_bs64_ep200 \
     --gpu_id 0 \
     --cond_scale 4 \
