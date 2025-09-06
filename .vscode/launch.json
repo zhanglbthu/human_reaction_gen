@@ -28,7 +28,7 @@
             "program": "${workspaceFolder}/train_mask_transformer.py",
             "console": "integratedTerminal",
             "args": [
-                "--name", "mtrans_memo_cross_l6_bs64_ep200",
+                "--name", "mtrans_debug",
                 "--gpu_id", "0",
                 "--dataset_name", "vimo",
                 "--batch_size", "64",

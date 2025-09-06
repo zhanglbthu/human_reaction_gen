@@ -148,6 +148,19 @@ class CrossattBlock(nn.Module):
         x = x + self.mlp(self.ln2(x))
         return x
 
+class CamTrajEncoder(nn.Module):
+    def __init__(self, cam_in_dim: int, latent_dim: int, dropout=0.1):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(cam_in_dim, latent_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(latent_dim, latent_dim),
+        )
+
+    def forward(self, cam_feats):   # cam_feats: [B, T, cam_in_dim]
+        return self.net(cam_feats)  # [B, T, latent_dim]
+
 class MaskTransformer(nn.Module):
     def __init__(self, code_dim, cond_mode, latent_dim=256, ff_size=1024, num_layers=8,
                  num_heads=4, dropout=0.1, clip_dim=512, cond_drop_prob=0.1,
@@ -160,6 +173,9 @@ class MaskTransformer(nn.Module):
         self.clip_dim = clip_dim
         self.dropout = dropout
         self.opt = opt
+        
+        # cam traj
+        self.cam_in_dim = 3
 
         self.cond_mode = cond_mode
         self.cond_drop_prob = cond_drop_prob
@@ -172,7 +188,7 @@ class MaskTransformer(nn.Module):
         Preparing Networks
         '''
         self.input_process = InputProcess(self.code_dim, self.latent_dim)
-        self.fuse_proj = nn.Linear(self.latent_dim * 2, self.latent_dim)
+        self.fuse_proj = nn.Linear(self.latent_dim * 3, self.latent_dim)
         self.position_enc = PositionalEncoding(self.latent_dim, self.dropout)
         self.global_local_crossatt_block = CrossattBlock()
 
@@ -210,6 +226,8 @@ class MaskTransformer(nn.Module):
 
         self.token_emb = nn.Embedding(_num_tokens, self.code_dim)
         self.frame_cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
+        
+        self.cam_encoder = CamTrajEncoder(self.cam_in_dim, self.latent_dim, dropout=dropout)
 
         self.apply(self.__init_weights)
 
@@ -281,10 +299,11 @@ class MaskTransformer(nn.Module):
         else:
             return cond
 
-    def trans_forward(self, motion_ids, padding_mask, frame_conds):
+    def trans_forward(self, motion_ids, padding_mask, frame_conds, cam_conds):
         """
         motion_in_ids: [B, T]           # BOS+右移后的输入 ids
         frame_conds:   [B, T, clip_dim] # 逐帧视频特征
+        cam_conds:     [B, T, 3]        # 逐帧相机轨迹
         padding_mask:  [B, T]           # True=屏蔽无效
         return logits: (B, vocab, T)
         """
@@ -297,8 +316,10 @@ class MaskTransformer(nn.Module):
         tok = tok.transpose(0,1).contiguous()          # [B, T, latent]
         vid = self.frame_cond_emb(frame_conds)         # [B, T, latent]
         
+        cam = self.cam_encoder(cam_conds)              # [B, T, latent]
+        
         # 2) frame concatenation
-        x = torch.cat([tok, vid], dim=-1)              # [B, T, 2*latent]
+        x = torch.cat([tok, vid, cam], dim=-1)              # [B, T, 3*latent]
         x = self.fuse_proj(x)                          # [B, T, latent]
         
         # 3) positional encoding
@@ -314,11 +335,12 @@ class MaskTransformer(nn.Module):
         logits = self.output_process(h)
         return logits
 
-    def forward(self, ids, m_lens, frame_conds):
+    def forward(self, ids, m_lens, frame_conds, cam_conds):
         """
         ids:          [B, T]            # 目标 token (不含 BOS)
         m_lens:       [B]               # 有效长度 (token 级)
         frame_conds:  [B, T, clip_dim]  # 逐帧视频特征 (与 ids 对齐)
+        cam_conds:    [B, T, 3]         # 逐帧相机轨迹 (与 ids 对齐)
         """
 
         B, T = ids.shape
@@ -335,7 +357,7 @@ class MaskTransformer(nn.Module):
 
         padding_mask = ~non_pad_mask
         
-        logits = self.trans_forward(x_ids, padding_mask, frame_conds)
+        logits = self.trans_forward(x_ids, padding_mask, frame_conds, cam_conds)  
         ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.pad_id)
 
         return ce_loss, pred_id, acc
@@ -343,10 +365,11 @@ class MaskTransformer(nn.Module):
     def forward_with_cond_scale(self,
                                 motion_ids,
                                 frame_conds,
+                                cam_conds,
                                 padding_mask,
                                 cond_scale=3):
 
-        logits = self.trans_forward(motion_ids, padding_mask, frame_conds)
+        logits = self.trans_forward(motion_ids, padding_mask, frame_conds, cam_conds)
         
         return logits
 
@@ -360,9 +383,11 @@ class MaskTransformer(nn.Module):
                  topk_filter_thres=0.9,
                  gsample=False,
                  frame_conds=None,
+                 cam_conds=None,
                  ):
         '''
         frame_conds: [B, T, clip_dim]  # 逐帧视频特征 (与 ids 对齐)
+        cam_conds:   [B, T, cam_in_dim] or None
         '''
 
         device = next(self.parameters()).device
@@ -370,6 +395,7 @@ class MaskTransformer(nn.Module):
         seq_len = 50
         batch_size = len(m_lens)
         frame_conds = frame_conds.to(device)  # (B, T, clip_dim)
+        cam_conds = cam_conds.to(device)
 
         # -------- padding_mask --------
         padding_mask = torch.cat([
@@ -396,6 +422,7 @@ class MaskTransformer(nn.Module):
             # 获取模型输出
             logits = self.forward_with_cond_scale(motion_ids=ids, 
                                                   frame_conds=frame_conds,
+                                                  cam_conds = cam_conds,
                                                   padding_mask=padding_mask,
                                                   cond_scale=cond_scale)
             
