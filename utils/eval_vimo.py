@@ -1464,7 +1464,10 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                               repeat_id, eval_wrapper, time_steps,
                                               cond_scale, temperature, topkr, gsample=True, 
                                               force_mask=False, cal_mm=True, res_cond_scale=5,
-                                              save_anim=False, out_dir='./Data/eval', plot_func=None):
+                                              save_anim=False, 
+                                              out_dir='./Data/eval', 
+                                              plot_func=None,
+                                              use_res=False):
                                               
     trans.eval()
     vq_model.eval()
@@ -1486,12 +1489,14 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         '''
         imgs: [B, 16, 3, 224, 224]
         pose: [B, 200, 263]
+        m_length: [B]
         '''
         imgs, pose, m_length, video_path = batch
         at_features_mean, at_features = video_encoder(imgs.cuda()) 
         # at_features_mean: [B, 512], Global visual representation
         # at_features: [B, 16, 512], Local visual representation
-
+        
+        # m_length: gt motion length
         m_length = m_length.cuda()
 
         bs, seq = pose.shape[:2]
@@ -1507,12 +1512,15 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                       gsample=gsample, force_mask=force_mask, memory=at_features)
                 # mids: [B, 49]
                 # Mask Transformer在video condition下生成Base-layer的VQ Token id
-                mids.unsqueeze_(-1)
+                if use_res:
+                    pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
+                else:
+                    pred_ids = mids.unsqueeze(-1)
                 # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
                 # pred_ids: [B, 49, 6], Token Prediction
                 # Residual Transformer生成Residual-layer的VQ Token id
 
-                pred_motions = vq_model.forward_decoder(mids)
+                pred_motions = vq_model.forward_decoder(pred_ids)
                 # pred_motions: [B, 196, 263]
 
                 em_pred = eval_wrapper.get_motion_embeddings(pred_motions.clone(), m_length)
@@ -1527,9 +1535,12 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                   force_mask=force_mask, memory=at_features)
 
             # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
-            mids.unsqueeze_(-1)
+            if use_res:
+                pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
+            else:
+                pred_ids = mids.unsqueeze(-1)
             
-            pred_motions = vq_model.forward_decoder(mids)
+            pred_motions = vq_model.forward_decoder(pred_ids)
             # pred_motions: [B, 196, 263]
 
             em_pred = eval_wrapper.get_motion_embeddings(pred_motions.clone(), m_length)
@@ -1543,7 +1554,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         nb_sample += bs
     
         if save_anim:
-            rand_idx = torch.arange(bs)
+            rand_idx = torch.arange(bs)[:1]
             # rand_idx = torch.randperm(bs)[:1]
                 
             data_gt = pose[rand_idx].detach().cpu().numpy()

@@ -5,6 +5,7 @@
     "version": "0.2.0",
     "configurations": [
 
+
         {
             "name": "evaluate_gen",
             "type": "debugpy",
@@ -14,12 +15,12 @@
             "args": [
                 "--dataset_name", "vimo",
                 "--vq_name", "rvq_bs256_finetune_ep10",
-                "--name", "mtrans_memo_cross_l6_bs64_ep200",
+                "--name", "mtrans_baseline",
                 "--res_name", "rtrans_memo_cross_l6_bs64_ep200",
                 "--gpu_id", "0",
                 "--cond_scale", "4",
                 "--time_steps", "10",
-                "--ext", "rvq1_rtrans1_bs64_cs4_ts10-newData",
+                "--ext", "rvq1_rtrans1_bs64_cs4_ts10",
                 "--which_epoch", "all",
                 "--test_txt", "test.txt"
             ],

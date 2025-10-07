@@ -180,7 +180,7 @@ if __name__ == '__main__':
     fixseed(opt.seed)
 
     opt.device = torch.device("cpu" if opt.gpu_id == -1 else "cuda:" + str(opt.gpu_id))
-    torch.autograd.set_detect_anomaly(True)
+    torch.autograd.set_detect_anomaly(True) # type: ignore
 
     # out_dir = pjoin(opt.check)
     root_dir = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.name)
@@ -235,12 +235,15 @@ if __name__ == '__main__':
     eval_val_loader = [batch_data for batch_data in tqdm(eval_val_loader)]
 
     out_dir = './Data/eval'
-    out_dir = os.path.join(out_dir, opt.name)
+    out_dir = os.path.join(out_dir, opt.exp_name)
     os.makedirs(out_dir, exist_ok=True)
     
     # model_dir = pjoin(opt.)
     for file in os.listdir(model_dir):
         if opt.which_epoch != "all" and opt.which_epoch not in file:
+            continue
+        # if file is not "net_best_fid.tar":
+        if not file.endswith('.tar'):
             continue
         print('loading checkpoint {}'.format(file))
         t2m_transformer, ep = load_trans_model(model_opt, file)
@@ -260,7 +263,7 @@ if __name__ == '__main__':
         div = []
         mm = []
 
-        repeat_time = 3
+        repeat_time = 20
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm = \
@@ -268,8 +271,11 @@ if __name__ == '__main__':
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
-                                                                        cal_mm=False,
-                                                                        save_anim=True, out_dir=out_dir, plot_func=plot_t2m)
+                                                                        cal_mm=True,
+                                                                        save_anim=False, 
+                                                                        out_dir=out_dir,
+                                                                        plot_func=plot_t2m,
+                                                                        use_res=True)
             fid.append(eval_fid)
             div_real.append(eval_div_real)
             div.append(eval_div)
