@@ -52,8 +52,8 @@ if __name__ == "__main__":
     # test_file = "test.txt"
     # videos_new_root = "videos_new"
     # output_file = "test_updated.txt"
-    test_file = os.path.join(root_dir, "test.txt")
+    test_file = os.path.join(root_dir, "train.txt")
     videos_new_root = os.path.join(root_dir, "videos_new", "expert")
-    output_file = os.path.join(root_dir, "test_spatial.txt")
+    output_file = os.path.join(root_dir, "train_spatial.txt")
 
     update_test_file(test_file, videos_new_root, output_file)
