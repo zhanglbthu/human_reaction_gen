@@ -887,7 +887,8 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
     for batch in val_loader:
         imgs, pose, m_length, video_path = batch
         at_features_mean, at_features = video_encoder(imgs.cuda())
-
+        at_features_mean = at_features[:,0,:] # [B, 512]
+        
         m_length = m_length.cuda()
 
         bs, seq = pose.shape[:2]
@@ -1511,9 +1512,10 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                 # mids: [B, 49]
                 # Mask Transformer在video condition下生成Base-layer的VQ Token id
                 
-                pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
-                # pred_ids: [B, 49, 6], Token Prediction
-                # Residual Transformer生成Residual-layer的VQ Token id
+                # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
+                # # pred_ids: [B, 49, 6], Token Prediction
+                # # Residual Transformer生成Residual-layer的VQ Token id
+                pred_ids = mids.unsqueeze(-1)
 
                 pred_motions = vq_model.forward_decoder(pred_ids)
                 # pred_motions: [B, 196, 263]
@@ -1529,7 +1531,9 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                   temperature=temperature, topk_filter_thres=topkr,
                                   force_mask=force_mask, memory=at_features)
 
-            pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
+            # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
+            
+            pred_ids = mids.unsqueeze(-1)
             
             pred_motions = vq_model.forward_decoder(pred_ids)
             # pred_motions: [B, 196, 263]
