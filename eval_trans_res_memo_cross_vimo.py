@@ -40,15 +40,20 @@ def plot_t2m(data, save_dir):
         plot_3d_motion(save_path, kinematic_chain, joint, title="", fps=fps, radius=radius)
 
 def cal_traj_error(pred_motion, gt_motion, m_length):
-    pred_motion = pred_motion * std + mean
-    gt_motion = gt_motion * std + mean
+    # pred_motion = pred_motion * std + mean
+    # gt_motion = gt_motion * std + mean
     
     pred_np = pred_motion.detach().cpu().numpy()
     gt_np = gt_motion.detach().cpu().numpy()
+    
+    pred_np = pred_np * std + mean
+    gt_np = gt_np * std + mean
 
     all_errors = []
     for b in range(pred_np.shape[0]):
         L = int(m_length[b].item())
+        # L取L，pred_np, gt_np中的最小值
+        L = min(L, pred_np.shape[1], gt_np.shape[1])
 
         pred_seq = pred_np[b][:L]
         gt_seq = gt_np[b][:L]
@@ -271,6 +276,8 @@ if __name__ == '__main__':
     for file in os.listdir(model_dir):
         if opt.which_epoch != "all" and opt.which_epoch not in file:
             continue
+        if file != 'net_best_fid.tar':
+            continue
         print('loading checkpoint {}'.format(file))
         t2m_transformer, ep = load_trans_model(model_opt, file)
 
@@ -288,16 +295,17 @@ if __name__ == '__main__':
         div_real = []
         div = []
         mm = []
+        traj = []
 
         repeat_time = 20
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
-                eval_fid, eval_div_real, eval_div, eval_mm = \
+                eval_fid, eval_div_real, eval_div, eval_mm, eval_traj = \
                     eval_vimo.evaluation_mask_transformer_test_plus_res_memo(eval_val_loader, vq_model, res_model, t2m_transformer, video_encoder,
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
-                                                                        cal_mm=True,
+                                                                        cal_mm=False,
                                                                         save_anim=False, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
@@ -306,11 +314,13 @@ if __name__ == '__main__':
             div_real.append(eval_div_real)
             div.append(eval_div)
             mm.append(eval_mm)
+            traj.append(eval_traj)
 
         fid = np.array(fid)
         div_real = np.array(div_real)
         div = np.array(div)
         mm = np.array(mm)
+        traj = np.array(traj)
 
         print(f'{file} final result, epoch {ep}')
         print(f'{file} final result, epoch {ep}', file=f, flush=True)
@@ -318,7 +328,8 @@ if __name__ == '__main__':
         msg_final = f"\tFID: {np.mean(fid):.3f}, conf. {np.std(fid) * 1.96 / np.sqrt(repeat_time):.3f}\n" \
                     f"\tDiversity Real: {np.mean(div_real):.3f}, conf. {np.std(div_real)*1.96/np.sqrt(repeat_time):.3f}\n" \
                     f"\tDiversity: {np.mean(div):.3f}, conf. {np.std(div) * 1.96 / np.sqrt(repeat_time):.3f}\n" \
-                    f"\tMultimodality:{np.mean(mm):.3f}, conf.{np.std(mm) * 1.96 / np.sqrt(repeat_time):.3f}\n\n"
+                    f"\tMultimodality:{np.mean(mm):.3f}, conf.{np.std(mm) * 1.96 / np.sqrt(repeat_time):.3f}\n\n" \
+                    f"\tAvg Traj Error (cm): {np.mean(traj)*100:.3f}, conf. {np.std(traj)*1.96/np.sqrt(repeat_time)*100:.3f}"
         # logger.info(msg_final)
         print(msg_final)
         print(msg_final, file=f, flush=True)

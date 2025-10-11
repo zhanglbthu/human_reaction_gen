@@ -1555,7 +1555,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         motion_pred_list.append(em_pred)
         
         if traj_func is not None:
-            traj_error = traj_func(pose, pred_motions, m_length)
+            traj_error = traj_func(pred_motions, pose, m_length)
             traj_error_list.append(traj_error)
 
         nb_sample += bs
@@ -1597,7 +1597,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
     motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()
     motion_pred_np = torch.cat(motion_pred_list, dim=0).cpu().numpy()
     traj_error_np = np.concatenate(traj_error_list, axis=0) if traj_func is not None else np.array([0.0])
-    avg_traj_error = np.mean(traj_error_np, axis=0) 
+    avg_traj_error = np.mean(traj_error_np, axis=0).item()
     
     if not force_mask and cal_mm:
         motion_multimodality = torch.cat(motion_multimodality, dim=0).cpu().numpy()
@@ -1616,7 +1616,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
           f"Avg Traj Error (cm): {avg_traj_error*100:.4f}"
     print(msg)
     # endregion
-    return fid, diversity_real, diversity, multimodality
+    return fid, diversity_real, diversity, multimodality, avg_traj_error
 
 @torch.no_grad()
 def evaluation_mask_transformer_fe_test(val_loader, vq_model, trans, video_encoder, fer, trans_fuser,
