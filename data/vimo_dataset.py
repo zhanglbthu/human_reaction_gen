@@ -13,6 +13,7 @@ import warnings
 warnings.filterwarnings(action='ignore', module='mmcv', category=UserWarning)
 
 from .pipeline import *
+from .data_utils import get_head_traj
 
 
 def collate_fn(batch):
@@ -234,20 +235,31 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         idx = random.randint(0, len(motion) - m_length)
         motion = motion[idx:idx+m_length]
 
+        # --------- 计算 head traj BEFORE normalization ---------
+        # *relative traj*
+        global_traj = get_head_traj(motion)  # (m_length, 3)
+        delta_traj = global_traj[1:] - global_traj[:-1]
+        cam_traj = np.vstack([np.zeros((1, 3)), delta_traj])
+        cam_traj = torch.from_numpy(cam_traj).float()
+
         "Z Normalization"
         motion = (motion - self.mean) / self.std
 
         if m_length < self.max_motion_length:
+            pad_T = self.max_motion_length - m_length
             motion = np.concatenate([motion,
-                                     np.zeros((self.max_motion_length - m_length, motion.shape[1]))
+                                     np.zeros((pad_T, motion.shape[1]))
                                      ], axis=0)
-
+            cam_traj = torch.cat([cam_traj, torch.zeros((pad_T, 3), dtype=cam_traj.dtype, device=cam_traj.device)], dim=0)
+        else:
+            motion = motion[:self.max_motion_length]
+            cam_traj = cam_traj[:self.max_motion_length]
         # del results['label']
         # results['motion'] = motion
         # results['motion_length'] = m_length
         # return results
 
-        return results['imgs'], motion, m_length, results['filename']
+        return results['imgs'], motion, m_length, results['filename'], cam_traj
 
     def __len__(self):
         """Get the size of the dataset."""

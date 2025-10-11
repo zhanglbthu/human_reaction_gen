@@ -3,8 +3,8 @@ export CUDA_VISIBLE_DEVICES=0
 python eval_trans_res_memo_cross_vimo.py \
     --dataset_name vimo \
     --vq_name rvq_bs256_finetune_ep10 \
-    --name ar_1011_new \
-    --exp_name ar_1011_spatial_new \
+    --name ar_cam_spatial_1011 \
+    --exp_name ar_cam_1011_spatial \
     --res_name rtrans_memo_cross_l6_bs64_ep200 \
     --gpu_id 0 \
     --cond_scale 4 \

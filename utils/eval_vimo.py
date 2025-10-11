@@ -885,9 +885,11 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
     nb_sample = 0
     # for i in range(1):
     for batch in val_loader:
-        imgs, pose, m_length, video_path = batch
+        imgs, pose, m_length, video_path, cam_traj = batch
         at_features_mean, at_features = video_encoder(imgs.cuda())
         at_features_mean = at_features[:,0,:] # [B, 512]
+        
+        cam_traj = cam_traj[:, ::4, :].cuda()  # [B, 50, 3]
         
         m_length = m_length.cuda()
 
@@ -895,7 +897,7 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
         # num_joints = 21 if pose.shape[-1] == 251 else 22
 
         # (b, seqlen)
-        mids = trans.generate(at_features_mean, m_length//4, time_steps, cond_scale, temperature=1, memory=at_features)
+        mids = trans.generate(at_features_mean, m_length//4, time_steps, cond_scale, temperature=1, memory=at_features, cam_conds=cam_traj)
 
         # motion_codes = motion_codes.permute(0, 2, 1)
         mids.unsqueeze_(-1)
@@ -1465,7 +1467,9 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                               repeat_id, eval_wrapper, time_steps,
                                               cond_scale, temperature, topkr, gsample=True, 
                                               force_mask=False, cal_mm=True, res_cond_scale=5,
-                                              save_anim=False, out_dir='./Data/eval', plot_func=None):
+                                              save_anim=False, out_dir='./Data/eval', 
+                                              plot_func=None,
+                                              traj_func=None):
                                               
     trans.eval()
     vq_model.eval()
@@ -1475,6 +1479,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
     motion_annotation_list = []
     motion_pred_list = []
     motion_multimodality = []
+    traj_error_list = []
     multimodality = 0
 
     nb_sample = 0
@@ -1488,13 +1493,14 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         imgs: [B, 16, 3, 224, 224]
         pose: [B, 200, 263]
         '''
-        imgs, pose, m_length, video_path = batch
+        imgs, pose, m_length, video_path, cam_traj = batch
         at_features_mean, at_features = video_encoder(imgs.cuda()) 
         # at_features_mean: [B, 512], Global visual representation
         # at_features: [B, 16, 512], Local visual representation
         
         # change: using first frame feature as global feature
         at_features_mean = at_features[:,0,:] # [B, 512]
+        cam_traj = cam_traj[:, ::4, :].cuda()
 
         m_length = m_length.cuda()
 
@@ -1508,7 +1514,8 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
             for _ in range(30):
                 mids = trans.generate(at_features_mean, m_length // 4, time_steps, cond_scale,
                                       temperature=temperature, topk_filter_thres=topkr,
-                                      gsample=gsample, force_mask=force_mask, memory=at_features)
+                                      gsample=gsample, force_mask=force_mask, memory=at_features,
+                                      cam_conds=cam_traj)
                 # mids: [B, 49]
                 # Mask Transformer在video condition下生成Base-layer的VQ Token id
                 
@@ -1529,7 +1536,8 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         else:
             mids = trans.generate(at_features_mean, m_length // 4, time_steps, cond_scale,
                                   temperature=temperature, topk_filter_thres=topkr,
-                                  force_mask=force_mask, memory=at_features)
+                                  force_mask=force_mask, memory=at_features,
+                                  cam_conds=cam_traj)
 
             # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
             
@@ -1545,6 +1553,10 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         em = eval_wrapper.get_motion_embeddings(pose, m_length)
         motion_annotation_list.append(em)
         motion_pred_list.append(em_pred)
+        
+        if traj_func is not None:
+            traj_error = traj_func(pose, pred_motions, m_length)
+            traj_error_list.append(traj_error)
 
         nb_sample += bs
     
@@ -1584,6 +1596,9 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
     # region: calculate quantitative metrics
     motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()
     motion_pred_np = torch.cat(motion_pred_list, dim=0).cpu().numpy()
+    traj_error_np = np.concatenate(traj_error_list, axis=0) if traj_func is not None else np.array([0.0])
+    avg_traj_error = np.mean(traj_error_np, axis=0) 
+    
     if not force_mask and cal_mm:
         motion_multimodality = torch.cat(motion_multimodality, dim=0).cpu().numpy()
         multimodality = calculate_multimodality(motion_multimodality, 10)
@@ -1597,7 +1612,8 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
 
     msg = f"--> \t Eva. Repeat {repeat_id} :, FID. {fid:.4f}, " \
           f"Diversity Real. {diversity_real:.4f}, Diversity. {diversity:.4f}, " \
-          f"multimodality. {multimodality:.4f}"
+          f"multimodality. {multimodality:.4f}, " \
+          f"Avg Traj Error (cm): {avg_traj_error*100:.4f}"
     print(msg)
     # endregion
     return fid, diversity_real, diversity, multimodality
