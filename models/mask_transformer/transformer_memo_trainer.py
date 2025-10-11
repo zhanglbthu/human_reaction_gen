@@ -52,6 +52,9 @@ class MaskTransformerTrainer:
         '''
         conds = at_features_mean
         
+        # change: using first frame as condition
+        conds = at_features[:,0,:] # [B, 512]
+        
         motion = motion.detach().float().to(self.device) # motion: [B, N, 263]
         m_lens = m_lens.detach().long().to(self.device) # m_lens: [B, 1]
 

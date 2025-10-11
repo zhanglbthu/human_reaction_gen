@@ -1491,6 +1491,9 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         at_features_mean, at_features = video_encoder(imgs.cuda()) 
         # at_features_mean: [B, 512], Global visual representation
         # at_features: [B, 16, 512], Local visual representation
+        
+        # change: using first frame feature as global feature
+        at_features_mean = at_features[:,0,:] # [B, 512]
 
         m_length = m_length.cuda()
 
