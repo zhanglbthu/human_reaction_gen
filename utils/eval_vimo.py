@@ -1465,7 +1465,9 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                               repeat_id, eval_wrapper, time_steps,
                                               cond_scale, temperature, topkr, gsample=True, 
                                               force_mask=False, cal_mm=True, res_cond_scale=5,
-                                              save_anim=False, out_dir='./Data/eval', plot_func=None):
+                                              save_anim=False, out_dir='./Data/eval', 
+                                              plot_func=None,
+                                              traj_func=None):
                                               
     trans.eval()
     vq_model.eval()
@@ -1475,6 +1477,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
     motion_annotation_list = []
     motion_pred_list = []
     motion_multimodality = []
+    traj_error_list = []
     multimodality = 0
 
     nb_sample = 0
@@ -1545,7 +1548,9 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         em = eval_wrapper.get_motion_embeddings(pose, m_length)
         motion_annotation_list.append(em)
         motion_pred_list.append(em_pred)
-
+        if traj_func is not None:
+            traj_error = traj_func(pred_motions, pose, m_length)
+            traj_error_list.append(traj_error)
         nb_sample += bs
     
         if save_anim:
@@ -1584,6 +1589,9 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
     # region: calculate quantitative metrics
     motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()
     motion_pred_np = torch.cat(motion_pred_list, dim=0).cpu().numpy()
+    traj_error_np = np.concatenate(traj_error_list, axis=0) if traj_func is not None else np.array([0.0])
+    avg_traj_error = np.mean(traj_error_np, axis=0).item()
+    
     if not force_mask and cal_mm:
         motion_multimodality = torch.cat(motion_multimodality, dim=0).cpu().numpy()
         multimodality = calculate_multimodality(motion_multimodality, 10)
@@ -1597,10 +1605,11 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
 
     msg = f"--> \t Eva. Repeat {repeat_id} :, FID. {fid:.4f}, " \
           f"Diversity Real. {diversity_real:.4f}, Diversity. {diversity:.4f}, " \
-          f"multimodality. {multimodality:.4f}"
+          f"multimodality. {multimodality:.4f}, " \
+          f"Avg Traj Error (cm): {avg_traj_error*100:.4f}"
     print(msg)
     # endregion
-    return fid, diversity_real, diversity, multimodality
+    return fid, diversity_real, diversity, multimodality, avg_traj_error
 
 @torch.no_grad()
 def evaluation_mask_transformer_fe_test(val_loader, vq_model, trans, video_encoder, fer, trans_fuser,
