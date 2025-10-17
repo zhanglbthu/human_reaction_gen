@@ -1555,7 +1555,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
     
         if save_anim:
             # rand_idx = torch.arange(bs)
-            rand_idx = torch.randperm(bs)[:1]
+            rand_idx = torch.randperm(bs)
                 
             data_gt = pose[rand_idx].detach().cpu().numpy()
             data_pred = pred_motions[rand_idx].detach().cpu().numpy()
