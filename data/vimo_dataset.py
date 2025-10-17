@@ -15,7 +15,44 @@ warnings.filterwarnings(action='ignore', module='mmcv', category=UserWarning)
 
 from .pipeline import *
 from .data_utils import get_head_traj
+import cv2
 
+
+def save_imgs_to_video(imgs, save_path, fps=30):
+    """
+    将 [T, C, H, W] 的张量保存为 mp4 视频文件
+    Args:
+        imgs: torch.Tensor, [T, C, H, W]
+        save_path: 保存路径 (str)，如 'vis/out.mp4'
+        fps: 帧率
+    """
+    # 创建文件夹
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    # 确保在CPU
+    imgs = imgs.detach().cpu()
+
+    # 转为 [T, H, W, C]
+    imgs_np = imgs.permute(0, 2, 3, 1).numpy()
+
+    # # 如果是float类型（0-1范围），转换到0-255
+    if imgs_np.dtype != np.uint8:
+        imgs_np = imgs_np.astype(np.uint8)
+
+    # 视频参数
+    T, H, W, C = imgs_np.shape
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(save_path, fourcc, fps, (W, H))
+
+    for t in range(T):
+        frame = imgs_np[t]
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        cv2.putText(frame, f"Frame {t}/{T}", (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        out.write(frame)
+
+    out.release()
+    print(f"[✓] Saved video to {save_path}")
 
 def collate_fn(batch):
     batch.sort(key=lambda x: x[3], reverse=True)
@@ -95,7 +132,6 @@ class VimoMotionDataset(Dataset):
 
         return motion
     
-
 class VimoMotionDatasetEval(Dataset):
     def __init__(self, opt, mean, std, split_file):
         self.opt = opt
@@ -253,38 +289,87 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         motion = (motion - self.mean) / self.std
 
         # TODO: align video and motion in frame level
+        # save_dir = os.path.join("vis", f"{osp.basename(results['filename'])}_len{m_length}")
+        # os.makedirs(save_dir, exist_ok=True)
         imgs = results['imgs'] # [T, 3, 224, 224]
-        T, C, H, W = imgs.shape
+        # # save raw imgs
+        # save_path = os.path.join(save_dir, "raw.mp4")
+        # save_imgs_to_video(imgs, save_path, fps=30)
         
-        # change: 视频线性插值到m_length帧
+        imgs, motion, cam_traj = self.align_and_pad_modalities(imgs, motion, cam_traj, m_length, self.max_motion_length)
+        # # save aligned imgs
+        # save_path = os.path.join(save_dir, "ali.mp4")
+        # save_imgs_to_video(imgs, save_path, fps=30)
+        
+        '''
+        imgs: [max_motion_length, C, H, W] 0~255
+        '''
+        return imgs, motion, m_length, results['filename'], cam_traj
+
+    def align_and_pad_modalities(
+        self, 
+        imgs: torch.Tensor,
+        motion: np.ndarray,
+        cam_traj: torch.Tensor,
+        m_length: int,
+        max_motion_length: int
+        ):
+        """
+        对齐并补齐视频帧 imgs、动作 motion 和相机轨迹 cam_traj, 使它们长度一致为 max_motion_length。
+        同时对视频帧进行时间插值到 m_length 帧。
+
+        Args:
+            imgs (torch.Tensor): [T, C, H, W]
+            motion (np.ndarray): [T, D]
+            cam_traj (torch.Tensor): [T, 3]
+            m_length (int): 有效的帧长度
+            max_motion_length (int): 模型要求的最大时间长度
+
+        Returns:
+            imgs (torch.Tensor): [max_motion_length, C, H, W]
+            motion (np.ndarray): [max_motion_length, D]
+            cam_traj (torch.Tensor): [max_motion_length, 3]
+        """
+        T, C, H, W = imgs.shape
+
+        # ====== Step 1. 插值视频到 m_length 帧 ======
         imgs = imgs.permute(1, 0, 2, 3).unsqueeze(0)  # [1, C, T, H, W]
         imgs_resampled = F.interpolate(
             imgs, size=(m_length, H, W), mode='trilinear', align_corners=False
-        ).squeeze(0).permute(1, 0, 2, 3)                 # [m_length, C, H, W]
-        
-        if m_length < self.max_motion_length:
-            motion = np.concatenate([motion,
-                                     np.zeros((self.max_motion_length - m_length, motion.shape[1]))
-                                     ], axis=0)
-            # change: padding imgs
-            pad_T = self.max_motion_length - m_length
+        ).squeeze(0).permute(1, 0, 2, 3)  # [m_length, C, H, W]
+
+        # ====== Step 2. padding 或 crop ======
+        if m_length < max_motion_length:
+            pad_T = max_motion_length - m_length
+
+            # motion 补0
+            motion = np.concatenate(
+                [motion, np.zeros((pad_T, motion.shape[1]))], axis=0
+            )
+
+            # imgs 补0帧
             pad_imgs = torch.zeros(
                 (pad_T, C, H, W), dtype=imgs_resampled.dtype, device=imgs_resampled.device
             )
-            imgs = torch.cat([imgs_resampled, pad_imgs], dim=0)  # [max_T, C, H, W]
-            
-            # padding cam_traj
-            cam_traj = torch.cat([cam_traj, torch.zeros((pad_T, 3), dtype=cam_traj.dtype, device=cam_traj.device)], dim=0)
-        else:
-            # crop motion and imgs to max_motion_length
-            motion = motion[:self.max_motion_length]
-            imgs = imgs_resampled[:self.max_motion_length]
-            cam_traj = cam_traj[:self.max_motion_length]
-        
-        assert imgs.shape[0] == motion.shape[0] == self.max_motion_length
-        
-        return imgs, motion, m_length, results['filename'], cam_traj
+            imgs = torch.cat([imgs_resampled, pad_imgs], dim=0)
 
+            # cam_traj 补0
+            pad_traj = torch.zeros(
+                (pad_T, 3), dtype=cam_traj.dtype, device=cam_traj.device
+            )
+            cam_traj = torch.cat([cam_traj, pad_traj], dim=0)
+
+        else:
+            # 超长则截断
+            motion = motion[:max_motion_length]
+            imgs = imgs_resampled[:max_motion_length]
+            cam_traj = cam_traj[:max_motion_length]
+
+        assert imgs.shape[0] == motion.shape[0] == max_motion_length, \
+            f"Shape mismatch: imgs={imgs.shape[0]}, motion={motion.shape[0]}, target={max_motion_length}"
+
+        return imgs, motion, cam_traj
+    
     def __len__(self):
         """Get the size of the dataset."""
         return len(self.video_infos)
@@ -295,7 +380,6 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
     
     def inv_transform(self, data):
         return data * self.std + self.mean
-
 
 class VimoDataset(VimoBaseDataset):
     def __init__(self, opt, mean, std, data_prefix, ann_file, pipeline, start_index=0, **kwargs):
@@ -318,8 +402,8 @@ class VimoDataset(VimoBaseDataset):
                 video_infos.append(dict(filename=video_name, label=motion, tar=False))
         return video_infos
 
-
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
+img_norm_cfg = dict(mean=[0, 0, 0], std=[1, 1, 1], to_bgr=False)
 config_input_size = 224
 config_num_frames = 100
 config_num_clip = 1
@@ -354,8 +438,6 @@ dict(type='DecordInit'),
 # dict(type='SampleAllFrames'),
 dict(type='SampleFrames', clip_len=1, frame_interval=1, num_clips=config_num_frames, test_mode=True),
 dict(type='DecordDecode'),
-#dict(type='Resize', scale=(-1, scale_resize)),
-#dict(type='CenterCrop', crop_size=config_input_size),
 dict(type='Resize', scale=(config_input_size, config_input_size), keep_ratio=False),
 dict(type='Normalize', **img_norm_cfg),
 dict(type='FormatShape', input_format='NCHW'),

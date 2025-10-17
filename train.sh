@@ -10,5 +10,5 @@ python train_mask_transformer.py \
     --milestones 6000 \
     --warm_up_iter 250 \
     --n_layers 6 \
-    --train_txt train_spatial.txt \
-    --test_txt test_spatial.txt
+    --train_txt train_debug.txt \
+    --test_txt test_debug.txt
