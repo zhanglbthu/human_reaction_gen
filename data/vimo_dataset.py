@@ -403,7 +403,9 @@ class VimoDataset(VimoBaseDataset):
         return video_infos
 
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
-img_norm_cfg = dict(mean=[0, 0, 0], std=[1, 1, 1], to_bgr=False)
+# img_norm_cfg = dict(mean=[0, 0, 0], std=[1, 1, 1], to_bgr=False)
+# img_norm_cfg = dict(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], to_bgr=False)
+
 config_input_size = 224
 config_num_frames = 100
 config_num_clip = 1

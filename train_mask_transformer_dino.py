@@ -177,8 +177,6 @@ if __name__ == '__main__':
     # video_encoder = prepare_video_encoder(clip_version)
     video_encoder = prepare_dino_encoder(opt.dino_encoder)
 
-    import sys
-    sys.exit()
     t2m_transformer = MaskTransformer(code_dim=vq_opt.code_dim,
                                       cond_mode='video',
                                       latent_dim=opt.latent_dim,

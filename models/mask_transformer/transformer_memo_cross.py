@@ -163,7 +163,7 @@ class CamTrajEncoder(nn.Module):
 
 class MaskTransformer(nn.Module):
     def __init__(self, code_dim, cond_mode, latent_dim=256, ff_size=1024, num_layers=8,
-                 num_heads=4, dropout=0.1, clip_dim=512, cond_drop_prob=0.1,
+                 num_heads=4, dropout=0.1, clip_dim=512, cond_drop_prob=0.1, dino_dim=384,
                  clip_version=None, opt=None, **kargs):
         super(MaskTransformer, self).__init__()
         print(f'latent_dim: {latent_dim}, ff_size: {ff_size}, nlayers: {num_layers}, nheads: {num_heads}, dropout: {dropout}')
@@ -171,6 +171,17 @@ class MaskTransformer(nn.Module):
         self.code_dim = code_dim # 512
         self.latent_dim = latent_dim # 384
         self.clip_dim = clip_dim
+        
+        if opt.dino_encoder == 'vits':
+            dino_dim = 384
+        elif opt.dino_encoder == 'vitb':
+            dino_dim = 768
+        elif opt.dino_encoder == 'vitl':
+            dino_dim = 1024
+        else:
+            raise KeyError("Unsupported DINO encoder type!!!")
+        
+        self.dino_dim = dino_dim
         self.dropout = dropout
         self.opt = opt
         
@@ -188,7 +199,7 @@ class MaskTransformer(nn.Module):
         Preparing Networks
         '''
         self.input_process = InputProcess(self.code_dim, self.latent_dim)
-        self.fuse_proj = nn.Linear(self.latent_dim * 3, self.latent_dim)
+        self.fuse_proj = nn.Linear(self.latent_dim * 2, self.latent_dim)
         self.position_enc = PositionalEncoding(self.latent_dim, self.dropout)
         self.global_local_crossatt_block = CrossattBlock()
 
@@ -204,7 +215,7 @@ class MaskTransformer(nn.Module):
         self.encode_action = partial(F.one_hot, num_classes=self.num_actions)
 
         if self.cond_mode == 'video':
-            self.cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
+            self.cond_emb = nn.Linear(self.dino_dim, self.latent_dim)
             #self.memo_emb = nn.Linear(self.clip_dim, self.latent_dim)
         elif self.cond_mode == 'text':
             self.cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
@@ -225,7 +236,7 @@ class MaskTransformer(nn.Module):
         self.output_process = OutputProcess_Bert(out_feats=opt.num_tokens, latent_dim=latent_dim)
 
         self.token_emb = nn.Embedding(_num_tokens, self.code_dim)
-        self.frame_cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
+        self.frame_cond_emb = nn.Linear(self.dino_dim, self.latent_dim)
         
         self.cam_encoder = CamTrajEncoder(self.cam_in_dim, self.latent_dim, dropout=dropout)
 
@@ -299,7 +310,7 @@ class MaskTransformer(nn.Module):
         else:
             return cond
 
-    def trans_forward(self, motion_ids, padding_mask, frame_conds, cam_conds):
+    def trans_forward(self, motion_ids, padding_mask, frame_conds, cam_conds=None):
         """
         motion_in_ids: [B, T]           # BOS+右移后的输入 ids
         frame_conds:   [B, T, clip_dim] # 逐帧视频特征
@@ -316,10 +327,14 @@ class MaskTransformer(nn.Module):
         tok = tok.transpose(0,1).contiguous()          # [B, T, latent]
         vid = self.frame_cond_emb(frame_conds)         # [B, T, latent]
         
-        cam = self.cam_encoder(cam_conds)              # [B, T, latent]
+        if cam_conds:
+            cam = self.cam_encoder(cam_conds)          # [B, T, latent]
         
         # 2) frame concatenation
-        x = torch.cat([tok, vid, cam], dim=-1)              # [B, T, 3*latent]
+        if cam_conds:
+            x = torch.cat([tok, vid, cam], dim=-1)     # [B, T, 3*latent]
+        else:
+            x = torch.cat([tok, vid], dim=-1)          # [B, T, 2*latent]
         x = self.fuse_proj(x)                          # [B, T, latent]
         
         # 3) positional encoding
@@ -347,17 +362,21 @@ class MaskTransformer(nn.Module):
         device = ids.device
 
         # 1) padding mask
-        non_pad_mask = lengths_to_mask(m_lens, T) #(b, n)
-        ids = torch.where(non_pad_mask, ids, self.pad_id)
-
+        # non_pad_mask = lengths_to_mask(m_lens, T) #(b, n)
+        # ids = torch.where(non_pad_mask, ids, self.pad_id)
+        # padding_mask = ~non_pad_mask
+        
+        padding_mask = torch.cat([
+            torch.zeros((B, 1), dtype=torch.bool, device=device),  # BOS 永远不是 pad
+            ~lengths_to_mask(m_lens, T)[:, :-1]  # 后面的照常 pad
+        ], dim=1)
+        
         # 2) BOS + teacher forcing
         bos = torch.full((B,1), self.bos_id, device=device, dtype=ids.dtype)
         x_ids = torch.cat([bos, ids[:, :-1]], dim=1)      # BOS+右移
         labels = ids 
 
-        padding_mask = ~non_pad_mask
-        
-        logits = self.trans_forward(x_ids, padding_mask, frame_conds, cam_conds)  
+        logits = self.trans_forward(x_ids, padding_mask, frame_conds, cam_conds=None)  
         ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.pad_id)
 
         return ce_loss, pred_id, acc
@@ -369,7 +388,7 @@ class MaskTransformer(nn.Module):
                                 padding_mask,
                                 cond_scale=3):
 
-        logits = self.trans_forward(motion_ids, padding_mask, frame_conds, cam_conds)
+        logits = self.trans_forward(motion_ids, padding_mask, frame_conds, cam_conds=None)
         
         return logits
 

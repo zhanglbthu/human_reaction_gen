@@ -11,10 +11,13 @@ class Dino_Encoder(nn.Module):
         self.dino.eval()
 
     def forward(self, x):
-        # x: (B, 3, T, H, W)
-        B, C, T, H, W = x.shape
-        x = x.permute(0, 2, 1, 3, 4).reshape(B * T, C, H, W)  # (B*T, 3, H, W)
-        features = self.dino.forward_features(x)  # (B*T, dim, h', w')
-        _, D, h_feat, w_feat = features.shape
-        features = features.reshape(B, T, D, h_feat, w_feat).permute(0, 2, 1, 3, 4)  # (B, dim, T, h', w')
-        return features
+        # x: (B, T, 3, H, W)
+        B, T, C, H, W = x.shape
+        
+        x = x.view(B*T, C, W, H)  # (B*T, 3, W, H)
+        
+        features = self.dino.forward_features(x)
+        
+        cls_features = features["x_norm_clstoken"] # (B*T, dim)
+        cls_features = cls_features.view(B, T, self.dim)  # (B, T, dim)
+        return cls_features

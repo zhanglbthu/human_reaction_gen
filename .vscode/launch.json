@@ -22,13 +22,13 @@
             "justMyCode": false
         },
         {
-            "name": "train_mask_transformer",
+            "name": "train_mask_transformer_dino",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/train_mask_transformer.py",
+            "program": "${workspaceFolder}/train_mask_transformer_dino.py",
             "console": "integratedTerminal",
             "args": [
-                "--name", "mtrans_debug",
+                "--name", "dino_debug",
                 "--gpu_id", "0",
                 "--dataset_name", "vimo",
                 "--batch_size", "64",
@@ -36,7 +36,10 @@
                 "--vq_name", "rvq_bs256_finetune_ep10",
                 "--milestones", "6000",
                 "--warm_up_iter", "250",
-                "--n_layers", "6"
+                "--n_layers", "6",
+                "--train_txt", "train_debug.txt", 
+                "--test_txt", "test_debug.txt",
+                "--dino_encoder", "vits"
             ],
             "justMyCode": false
         }

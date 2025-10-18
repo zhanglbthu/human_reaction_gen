@@ -12,6 +12,7 @@ from models.t2m_eval_wrapper import EvaluatorModelWrapper
 from data.vimo_dataset import VimoDataset, val_pipeline
 from torch.utils.data import DataLoader
 from models.tc_clip.tc_clip import TCCLIP_VE
+from models.dinov2.dino_encoder import Dino_Encoder
 from custom_clip import clip
 
 import utils.eval_vimo as eval_vimo
@@ -173,6 +174,17 @@ def prepare_video_encoder(clip_version):
     video_encoder = load_tcclip_model('./checkpoints/tcclip/zero_shot_k400_tc_clip_newkeys.pth', video_encoder)
     return video_encoder
 
+def prepare_dino_encoder(encoder='vits'):
+    # dino = torch.hub.load('facebookresearch/dinov2', 'dinov2_{:}14'.format(encoder))
+    # dim = dino.blocks[0].attn.qkv.in_features
+    # print(f'Loading DINOv2 {encoder} with feature dim {dim}')
+    dino_encoder = Dino_Encoder(encoder=encoder)
+    for param in dino_encoder.parameters():
+        param.requires_grad_(False)
+    dino_encoder.float()
+    dino_encoder.to(opt.device)
+    return dino_encoder
+
 if __name__ == '__main__':
     parser = EvalT2MOptions()
     opt = parser.parse()
@@ -223,7 +235,8 @@ if __name__ == '__main__':
     wrapper_opt = get_opt(dataset_opt_path, torch.device('cuda'))
     eval_wrapper = EvaluatorModelWrapper(wrapper_opt)
 
-    video_encoder = prepare_video_encoder(clip_version)
+    # video_encoder = prepare_video_encoder(clip_version)
+    video_encoder = prepare_dino_encoder(opt.dino_encoder)
 
     mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'mean.npy'))
     std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'std.npy'))
@@ -261,7 +274,7 @@ if __name__ == '__main__':
         div = []
         mm = []
 
-        repeat_time = 3
+        repeat_time = 20
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm = \
@@ -269,8 +282,8 @@ if __name__ == '__main__':
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
-                                                                        cal_mm=False,
-                                                                        save_anim=True, 
+                                                                        cal_mm=True,
+                                                                        save_anim=False, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m)
             fid.append(eval_fid)

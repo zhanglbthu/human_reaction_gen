@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=0
 
-python train_mask_transformer.py \
-    --name ours_relTraj \
+python train_mask_transformer_dino.py \
+    --name img_dino_vitl \
     --gpu_id 0 \
     --dataset_name vimo \
     --batch_size 64 \
@@ -10,5 +10,6 @@ python train_mask_transformer.py \
     --milestones 6000 \
     --warm_up_iter 250 \
     --n_layers 6 \
-    --train_txt train_debug.txt \
-    --test_txt test_debug.txt
+    --train_txt train_spatial.txt \
+    --test_txt test_spatial.txt \
+    --dino_encoder vitl

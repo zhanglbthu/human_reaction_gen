@@ -45,7 +45,7 @@ class MaskTransformerTrainer:
         cam_traj: [64, 200, 3]
         '''
         imgs = imgs[:, ::4, :, :, :] # [B, 50, C, H, W]
-        at_features_mean, at_features = self.video_encoder(imgs.cuda()) # at_features_mean: [B, 512], at_features: [B, T, 512]
+        features = self.video_encoder(imgs.cuda()) # at_features_mean: [B, 512], at_features: [B, T, 512]
         '''
         at_features_mean: [64, 512]
         at_features: [64, 50, 512]
@@ -66,7 +66,7 @@ class MaskTransformerTrainer:
         '''
         m_lens = m_lens // 4
 
-        _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], m_lens, at_features, cam_traj)
+        _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], m_lens, features, cam_traj)
 
         return _loss, _acc
 
