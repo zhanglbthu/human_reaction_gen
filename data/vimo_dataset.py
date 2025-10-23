@@ -292,19 +292,22 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         # save_dir = os.path.join("vis", f"{osp.basename(results['filename'])}_len{m_length}")
         # os.makedirs(save_dir, exist_ok=True)
         imgs = results['imgs'] # [T, 3, 224, 224]
+        depth = results['depth']  # [N, H, W]
         # # save raw imgs
         # save_path = os.path.join(save_dir, "raw.mp4")
         # save_imgs_to_video(imgs, save_path, fps=30)
         
-        imgs, motion, cam_traj = self.align_and_pad_modalities(imgs, motion, cam_traj, m_length, self.max_motion_length)
+        imgs, motion, cam_traj, depth = self.align_and_pad_modalities(imgs, motion, cam_traj, m_length, self.max_motion_length, depth)
+        
+        imgs = imgs[::4, :, :, :]  
+        cam_traj = cam_traj[::4, :]
+        depth = depth[::4, :, :]
+        
         # # save aligned imgs
         # save_path = os.path.join(save_dir, "ali.mp4")
         # save_imgs_to_video(imgs, save_path, fps=30)
         
-        '''
-        imgs: [max_motion_length, C, H, W] 0~255
-        '''
-        return imgs, motion, m_length, results['filename'], cam_traj
+        return imgs, motion, m_length, results['filename'], cam_traj, depth
 
     def align_and_pad_modalities(
         self, 
@@ -312,7 +315,8 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         motion: np.ndarray,
         cam_traj: torch.Tensor,
         m_length: int,
-        max_motion_length: int
+        max_motion_length: int,
+        depth: np.ndarray
         ):
         """
         对齐并补齐视频帧 imgs、动作 motion 和相机轨迹 cam_traj, 使它们长度一致为 max_motion_length。
@@ -337,7 +341,13 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         imgs_resampled = F.interpolate(
             imgs, size=(m_length, H, W), mode='trilinear', align_corners=False
         ).squeeze(0).permute(1, 0, 2, 3)  # [m_length, C, H, W]
-
+        
+        # depth插值到 m_length 帧
+        depth = torch.from_numpy(depth).unsqueeze(0).unsqueeze(0) # [1, 1, T, H, W]
+        depth_resampled = F.interpolate(
+            depth, size=(m_length, H, W), mode='trilinear', align_corners=False
+        ).squeeze(0).squeeze(0).numpy()  # [m_length, H, W]
+        
         # ====== Step 2. padding 或 crop ======
         if m_length < max_motion_length:
             pad_T = max_motion_length - m_length
@@ -358,17 +368,24 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
                 (pad_T, 3), dtype=cam_traj.dtype, device=cam_traj.device
             )
             cam_traj = torch.cat([cam_traj, pad_traj], dim=0)
+            
+            # depth 补0
+            pad_depth = np.zeros(
+                (pad_T, depth_resampled.shape[1], depth_resampled.shape[2])
+            )
+            depth = np.concatenate([depth_resampled, pad_depth], axis=0)
 
         else:
             # 超长则截断
             motion = motion[:max_motion_length]
             imgs = imgs_resampled[:max_motion_length]
             cam_traj = cam_traj[:max_motion_length]
+            depth = depth_resampled[:max_motion_length]
 
         assert imgs.shape[0] == motion.shape[0] == max_motion_length, \
             f"Shape mismatch: imgs={imgs.shape[0]}, motion={motion.shape[0]}, target={max_motion_length}"
 
-        return imgs, motion, cam_traj
+        return imgs, motion, cam_traj, depth
     
     def __len__(self):
         """Get the size of the dataset."""
@@ -395,11 +412,16 @@ class VimoDataset(VimoBaseDataset):
         with open(ann_file_path, 'r') as fin:
             for line in fin:
                 line_split = line.strip().split()
-                video_name, motion_name = line_split
+                video_name, motion_name, depth_name = line_split
                 video_name = osp.join(self.data_prefix, video_name)
                 motion_name = osp.join(self.data_prefix, motion_name)
+                depth_name = osp.join(self.data_prefix, depth_name) # .npz
+                
                 motion = np.load(motion_name) # [N, 263]
-                video_infos.append(dict(filename=video_name, label=motion, tar=False))
+                depth = np.load(depth_name)
+                depth = depth['depths']  # [N, H, W]
+                
+                video_infos.append(dict(filename=video_name, label=motion, depth=depth, tar=False))
         return video_infos
 
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
@@ -420,7 +442,7 @@ dict(type='DecordDecode'),
 dict(type='Resize', scale=(config_input_size, config_input_size), keep_ratio=False),
 dict(type='Normalize', **img_norm_cfg),
 dict(type='FormatShape', input_format='NCHW'),
-dict(type='Collect', keys=['imgs', 'label', 'filename'], meta_keys=[]),
+dict(type='Collect', keys=['imgs', 'label', 'filename', 'depth'], meta_keys=[]),
 dict(type='ToTensor', keys=['imgs'])
 ]
 
@@ -431,7 +453,7 @@ dict(type='DecordDecode'),
 dict(type='Resize', scale=(config_input_size, config_input_size), keep_ratio=False),
 dict(type='Normalize', **img_norm_cfg),
 dict(type='FormatShape', input_format='NCHW'),
-dict(type='Collect', keys=['imgs', 'label', 'filename'], meta_keys=[]),
+dict(type='Collect', keys=['imgs', 'label', 'filename', 'depth'], meta_keys=[]),
 dict(type='ToTensor', keys=['imgs'])
 ]
 

@@ -880,13 +880,14 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
     nb_sample = 0
     # for i in range(1):
     for batch in val_loader:
-        imgs, pose, m_length, video_path, cam_traj = batch
+        imgs, pose, m_length, video_path, cam_traj, depth = batch
 
         # downsample the imgs to 50 frames
-        imgs = imgs[:, ::4, :, :, :] # [B, 50, C, H, W]
+        # imgs = imgs[:, ::4, :, :, :] # [B, 50, C, H, W]
         features = video_encoder(imgs.cuda())
         
-        cam_traj = cam_traj[:, ::4, :].cuda()  # [B, 50, 3]
+        # cam_traj = cam_traj[:, ::4, :].cuda()  # [B, 50, 3]
+        # depth = depth[:, ::4, :, :].cuda()  # [B, 50, H, W]
 
         m_length = m_length.cuda()
 
@@ -894,7 +895,7 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
         # num_joints = 21 if pose.shape[-1] == 251 else 22
 
         # (b, seqlen)
-        mids = trans.generate(m_length//4, time_steps, cond_scale, temperature=1, frame_conds=features, cam_conds=cam_traj)
+        mids = trans.generate(m_length//4, time_steps, cond_scale, temperature=1, frame_conds=features, cam_conds=cam_traj, depth_conds=depth)
 
         # motion_codes = motion_codes.permute(0, 2, 1)
         mids.unsqueeze_(-1)
@@ -917,7 +918,6 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
 
     diversity_real = calculate_diversity(motion_annotation_np, 300 if nb_sample > 300 else 100)
     diversity = calculate_diversity(motion_pred_np, 300 if nb_sample > 300 else 100)
-
     fid = calculate_frechet_distance(gt_mu, gt_cov, mu, cov)
 
     msg = f"--> \t Eva. Ep {ep} :, FID. {fid:.4f}, Diversity Real. {diversity_real:.4f}, Diversity. {diversity:.4f}"
@@ -1488,12 +1488,13 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         imgs: [B, 16, 3, 224, 224]
         pose: [B, 200, 263]
         '''
-        imgs, pose, m_length, video_path, cam_traj = batch
-        imgs = imgs[:, ::4, :, :, :] # [B, 50, C, H, W]
+        imgs, pose, m_length, video_path, cam_traj, depth = batch
+        # imgs = imgs[:, ::4, :, :, :] # [B, 50, C, H, W]
         features = video_encoder(imgs.cuda()) 
         # at_features_mean: [B, 512], Global visual representation
         # at_features: [B, 16, 512], Local visual representation
-        cam_traj = cam_traj[:, ::4, :].cuda()  # [B, 50, 3]
+        # cam_traj = cam_traj[:, ::4, :].cuda()  # [B, 50, 3]
+        # depth = depth[:, ::4, :, :].cuda()  # [B, 50, H, W]
 
         m_length = m_length.cuda()
 
@@ -1510,6 +1511,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                       gsample=gsample,
                                       frame_conds=features,
                                       cam_conds=cam_traj,
+                                      depth_conds=depth,
                                       )
                 # mids: [B, 49]
                 # Mask Transformer在video condition下生成Base-layer的VQ Token id
