@@ -226,7 +226,14 @@ class MaskTransformer(nn.Module):
         Preparing Networks
         '''
         self.input_process = InputProcess(self.code_dim, self.latent_dim)
-        self.fuse_proj = nn.Linear(self.latent_dim * 3, self.latent_dim)
+        
+        modality_num = int(opt.use_traj) + int(opt.use_depth)
+        # print if use traj or depth
+        print(f'Using camera trajectory: {opt.use_traj}, Using depth: {opt.use_depth}')
+        # print modality num
+        print(f'Number of modalities used: {2 + modality_num}')
+        self.fuse_proj = nn.Linear(self.latent_dim * (2 + modality_num), self.latent_dim)
+        
         self.position_enc = PositionalEncoding(self.latent_dim, self.dropout)
         self.global_local_crossatt_block = CrossattBlock()
 
@@ -357,16 +364,16 @@ class MaskTransformer(nn.Module):
         tok = tok.transpose(0,1).contiguous()                 # [B, T, latent]
         vid = self.frame_cond_emb(frame_conds)                # [B, T, latent]
         
-        if cam_conds is not None:
+        if self.opt.use_traj:
             cam = self.cam_encoder(cam_conds.cuda())                 # [B, T, latent]
-        if depth_conds is not None:
+        if self.opt.use_depth:
             depth = self.depth_encoder(depth_conds.cuda())           # [B, T, latent]
         # 2) frame concatenation
-        if cam_conds is not None and depth_conds is not None:
+        if self.opt.use_traj and self.opt.use_depth:
             x = torch.cat([tok, vid, cam, depth], dim=-1)     # [B, T, 4*latent]
-        elif cam_conds:
+        elif self.opt.use_traj:
             x = torch.cat([tok, vid, cam], dim=-1)            # [B, T, 3*latent]
-        elif depth_conds is not None:
+        elif self.opt.use_depth:
             x = torch.cat([tok, vid, depth], dim=-1)          # [B, T, 3*latent]
         else:
             x = torch.cat([tok, vid], dim=-1)                 # [B, T, 2*latent]
@@ -411,7 +418,7 @@ class MaskTransformer(nn.Module):
         x_ids = torch.cat([bos, ids[:, :-1]], dim=1)      # BOS+右移
         labels = ids 
 
-        logits = self.trans_forward(x_ids, padding_mask, frame_conds, cam_conds=None, depth_conds=depth_conds)
+        logits = self.trans_forward(x_ids, padding_mask, frame_conds, cam_conds=cam_conds, depth_conds=depth_conds)
         ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.pad_id)
 
         return ce_loss, pred_id, acc
@@ -424,7 +431,7 @@ class MaskTransformer(nn.Module):
                                 cond_scale=3,
                                 depth_conds=None,):
 
-        logits = self.trans_forward(motion_ids, padding_mask, frame_conds, cam_conds=None, depth_conds=depth_conds)
+        logits = self.trans_forward(motion_ids, padding_mask, frame_conds, cam_conds=cam_conds, depth_conds=depth_conds)
         
         return logits
 

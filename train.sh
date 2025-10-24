@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=0
 
 python train_mask_transformer_dino.py \
-    --name img_depth \
+    --name img \
     --gpu_id 0 \
     --dataset_name vimo \
     --batch_size 64 \
@@ -12,4 +12,6 @@ python train_mask_transformer_dino.py \
     --n_layers 6 \
     --train_txt train_spatial.txt \
     --test_txt test_spatial.txt \
-    --dino_encoder vits
+    --dino_encoder vits \
+    # --use_traj \
+    # --use_depth

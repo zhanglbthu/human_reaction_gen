@@ -148,7 +148,7 @@ class MaskTransformerTrainer:
             self.logger, epoch,
             best_fid=100, best_div=100,
             eval_wrapper=eval_wrapper, plot_func=plot_eval, 
-            save_ckpt=True, save_anim=True
+            save_ckpt=True, save_anim=False
         )
 
         best_loss = 100
