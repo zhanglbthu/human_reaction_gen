@@ -284,7 +284,6 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         # cam_traj = torch.from_numpy(global_traj).float()  
         # -------------------------------------------------------
         
-
         "Z Normalization"
         motion = (motion - self.mean) / self.std
 
@@ -418,8 +417,11 @@ class VimoDataset(VimoBaseDataset):
                 depth_name = osp.join(self.data_prefix, depth_name) # .npz
                 
                 motion = np.load(motion_name) # [N, 263]
-                depth = np.load(depth_name)
-                depth = depth['depths']  # [N, H, W]
+                if self.opt.use_depth:
+                    depth = np.load(depth_name)
+                    depth = depth['depths']  # [N, H, W]
+                else:
+                    depth = np.zeros((motion.shape[0], 224, 224))  
                 
                 video_infos.append(dict(filename=video_name, label=motion, depth=depth, tar=False))
         return video_infos

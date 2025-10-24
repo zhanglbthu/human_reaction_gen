@@ -13,6 +13,7 @@ from copy import deepcopy
 from functools import partial
 from models.mask_transformer.tools import *
 from torch.distributions.categorical import Categorical
+import time
 
 class InputProcess(nn.Module):
     def __init__(self, input_feats, latent_dim):
@@ -250,13 +251,6 @@ class MaskTransformer(nn.Module):
 
         if self.cond_mode == 'video':
             self.cond_emb = nn.Linear(self.dino_dim, self.latent_dim)
-            #self.memo_emb = nn.Linear(self.clip_dim, self.latent_dim)
-        elif self.cond_mode == 'text':
-            self.cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
-        elif self.cond_mode == 'action':
-            self.cond_emb = nn.Linear(self.num_actions, self.latent_dim)
-        elif self.cond_mode == 'uncond':
-            self.cond_emb = nn.Identity()
         else:
             raise KeyError("Unsupported condition mode!!!")
 
@@ -356,6 +350,9 @@ class MaskTransformer(nn.Module):
         return logits: (B, vocab, T)
         """
 
+        # cam_conds = None
+        # depth_conds = None
+        
         B, T = motion_ids.shape
 
         # 1) token embedding
@@ -365,9 +362,9 @@ class MaskTransformer(nn.Module):
         vid = self.frame_cond_emb(frame_conds)                # [B, T, latent]
         
         if self.opt.use_traj:
-            cam = self.cam_encoder(cam_conds.cuda())                 # [B, T, latent]
+            cam = self.cam_encoder(cam_conds.cuda())          # [B, T, latent]
         if self.opt.use_depth:
-            depth = self.depth_encoder(depth_conds.cuda())           # [B, T, latent]
+            depth = self.depth_encoder(depth_conds.cuda())    # [B, T, latent]
         # 2) frame concatenation
         if self.opt.use_traj and self.opt.use_depth:
             x = torch.cat([tok, vid, cam, depth], dim=-1)     # [B, T, 4*latent]
@@ -447,6 +444,7 @@ class MaskTransformer(nn.Module):
                  frame_conds=None,
                  cam_conds=None,
                  depth_conds=None,
+                 cal_latency=False,
                  ):
         '''
         frame_conds: [B, T, clip_dim]  # 逐帧视频特征 (与 ids 对齐)
@@ -474,6 +472,8 @@ class MaskTransformer(nn.Module):
 
         # -------- autoregressive 生成 --------
         for pos in range(seq_len):
+            if cal_latency:
+                start_time = time.time()
             # 创建当前位置的mask
             pos_mask = torch.zeros_like(padding_mask)
             
@@ -512,6 +512,9 @@ class MaskTransformer(nn.Module):
             else:
                 # concatenate the last predicted id
                 ids = torch.cat([ids, pred_ids], dim=1)
+            if cal_latency:
+                end_time = time.time()
+                print(f"Position {pos}/{seq_len} latency: {(end_time - start_time) * 1000:.2f} ms")
         # remove bos id
         ids = ids[:, 1:]
         ids = torch.where(~lengths_to_mask(m_lens, 50), -1, ids)
