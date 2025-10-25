@@ -237,6 +237,10 @@ class MaskTransformer(nn.Module):
         
         self.position_enc = PositionalEncoding(self.latent_dim, self.dropout)
         self.global_local_crossatt_block = CrossattBlock()
+        
+        self.alpha_vid = nn.Parameter(torch.tensor(0.5))
+        self.norm_tok = nn.LayerNorm(latent_dim)
+        self.norm_vid = nn.LayerNorm(latent_dim)
 
         seqTransEncoderLayer = nn.TransformerEncoderLayer(d_model=self.latent_dim,
                                                           nhead=num_heads,
@@ -340,10 +344,22 @@ class MaskTransformer(nn.Module):
         else:
             return cond
 
+    def vid_drop_out(self, vid_feats, drop_prob=0.2):
+        '''
+        frame-level drop out
+        '''
+        if not self.training or drop_prob <= 0.:
+            return vid_feats
+
+        B, T, D = vid_feats.shape
+        mask = (torch.rand(B, T, 1, device=vid_feats.device) > drop_prob).float()
+        vid_feats = vid_feats * mask
+        return vid_feats
+        
     def trans_forward(self, motion_ids, padding_mask, frame_conds, cam_conds=None, depth_conds=None):
         """
         motion_in_ids: [B, T]           # BOS+右移后的输入 ids
-        frame_conds:   [B, T, clip_dim] # 逐帧视频特征
+        frame_conds:   [B, T, dino_dim] # 逐帧视频特征
         cam_conds:     [B, T, 3]        # 逐帧相机轨迹
         padding_mask:  [B, T]           # True=屏蔽无效
         depth:         [B, T, H, W]
@@ -360,6 +376,15 @@ class MaskTransformer(nn.Module):
         tok = self.input_process(tok)                         # [T, B, latent]
         tok = tok.transpose(0,1).contiguous()                 # [B, T, latent]
         vid = self.frame_cond_emb(frame_conds)                # [B, T, latent]
+        
+        # # change1: drop_out
+        # vid = self.vid_drop_out(vid, drop_prob=0.2)
+        
+        # # change2: additive fusion
+        # x = self.norm_tok(tok) + self.alpha_vid * self.norm_vid(vid)
+        
+        # # change3: none
+        # x = tok
         
         if self.opt.use_traj:
             cam = self.cam_encoder(cam_conds.cuda())          # [B, T, latent]
