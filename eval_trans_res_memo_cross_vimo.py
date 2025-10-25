@@ -313,6 +313,7 @@ if __name__ == '__main__':
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
                                                                         use_res=True,
+                                                                        cal_latency=True,
                                                                         traj_func=cal_traj_error)
             fid.append(eval_fid)
             div_real.append(eval_div_real)

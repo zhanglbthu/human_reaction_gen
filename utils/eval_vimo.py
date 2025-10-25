@@ -1468,6 +1468,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                               out_dir='./Data/eval', 
                                               plot_func=None,
                                               use_res=False,
+                                              cal_latency=False,
                                               traj_func=None):
                                               
     trans.eval()
