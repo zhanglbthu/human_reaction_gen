@@ -9,6 +9,7 @@ import torch.nn.functional as F
 # import visualization.plot_3d_global as plot_3d
 from utils.motion_process import recover_from_ric
 from tqdm import tqdm
+import time
 #
 #
 # def tensorborad_add_video_xyz(writer, xyz, nb_iter, tag, nb_vis=4, title_batch=None, outname=None):
@@ -1464,7 +1465,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
                                               repeat_id, eval_wrapper, time_steps,
                                               cond_scale, temperature, topkr, gsample=True, 
                                               force_mask=False, cal_mm=True, res_cond_scale=5,
-                                              save_anim=False, out_dir='./Data/eval', plot_func=None):
+                                              save_anim=False, out_dir='./Data/eval', plot_func=None, cal_latency=False):
                                               
     trans.eval()
     vq_model.eval()
@@ -1489,8 +1490,19 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         pose: [B, 200, 263]
         '''
         imgs, pose, m_length, video_path, cam_traj, depth = batch
-        # imgs = imgs[:, ::4, :, :, :] # [B, 50, C, H, W]
-        features = video_encoder(imgs.cuda()) 
+        
+        imgs = imgs.cuda()
+        features = video_encoder(imgs) 
+        if cal_latency:
+            # print per frame encoding time
+            T = imgs.shape[1]
+            for t in range(T):
+                img_t = imgs[:, t, :, :, :].unsqueeze(1)  # [B, 1, 3, 224, 224]
+                start_time = time.time()
+                _ = video_encoder(img_t)
+                end_time = time.time()
+                latency = end_time - start_time
+                print(f'Frame {t}: Encoding time {latency*1000:.2f} ms')
         # at_features_mean: [B, 512], Global visual representation
         # at_features: [B, 16, 512], Local visual representation
         # cam_traj = cam_traj[:, ::4, :].cuda()  # [B, 50, 3]
@@ -1533,13 +1545,29 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         else:
             mids = trans.generate(m_length // 4, time_steps, cond_scale,
                                   temperature=temperature, topk_filter_thres=topkr,
-                                  frame_conds=features, cam_conds=cam_traj,
+                                  frame_conds=features, cam_conds=cam_traj, depth_conds=depth,
+                                  cal_latency=cal_latency
                                   )
 
             # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
             
             mids.unsqueeze_(-1)
             pred_motions = vq_model.forward_decoder(mids)
+            if cal_latency:
+                B, T, _ = mids.shape
+                for t in range(T):
+                    mid_t = mids[:, t, :].unsqueeze(1)  # [B, 1, C]
+                    start_time = time.time()
+                    _ = vq_model.forward_decoder(mid_t)
+                    end_time = time.time()
+                    latency = end_time - start_time
+                    print(f'Token {t}: Decoding time {latency*1000:.2f} ms')
+                # print whole sequence decoding time
+                start_time = time.time()
+                _ = vq_model.forward_decoder(mids)
+                end_time = time.time()
+                latency = end_time - start_time
+                print(f'Whole sequence: Decoding time {latency*1000:.2f} ms')
             # pred_motions: [B, 196, 263]
 
             em_pred = eval_wrapper.get_motion_embeddings(pred_motions.clone(), m_length)

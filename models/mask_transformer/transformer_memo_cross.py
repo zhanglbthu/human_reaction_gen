@@ -399,16 +399,8 @@ class MaskTransformer(nn.Module):
 
         B, T = ids.shape
         device = ids.device
-
-        # 1) padding mask
-        # non_pad_mask = lengths_to_mask(m_lens, T) #(b, n)
-        # ids = torch.where(non_pad_mask, ids, self.pad_id)
-        # padding_mask = ~non_pad_mask
         
-        padding_mask = torch.cat([
-            torch.zeros((B, 1), dtype=torch.bool, device=device),  # BOS 永远不是 pad
-            ~lengths_to_mask(m_lens, T)[:, :-1]  # 后面的照常 pad
-        ], dim=1)
+        padding_mask = ~lengths_to_mask(m_lens, T)
         
         # 2) BOS + teacher forcing
         bos = torch.full((B,1), self.bos_id, device=device, dtype=ids.dtype)
@@ -460,44 +452,31 @@ class MaskTransformer(nn.Module):
         depth_conds = depth_conds.to(device) if depth_conds is not None else None
 
         # -------- padding_mask --------
-        padding_mask = torch.cat([
-            torch.zeros((batch_size, 1), dtype=torch.bool, device=device),  # BOS 永远不是 pad
-            ~lengths_to_mask(m_lens, 50)[:, :-1]  # 后面的照常 pad
-        ], dim=1)
+        padding_mask = ~lengths_to_mask(m_lens, 50)
 
         # -------- 初始化 ids --------
         bos_col = torch.full((batch_size, 1), self.bos_id, device=device)
-        rest_ids = torch.where(padding_mask, self.pad_id, self.mask_id)
-        ids = torch.cat([bos_col, rest_ids[:, :-1]], dim=1) # [B, seq_len]
+        ids = bos_col.clone()
 
         # -------- autoregressive 生成 --------
-        for pos in range(seq_len):
-            if cal_latency:
-                start_time = time.time()
-            # 创建当前位置的mask
-            pos_mask = torch.zeros_like(padding_mask)
-            
-            if pos + 1 < seq_len:
-                pos_mask[:, pos + 1] = True
-            
-            # 只mask当前位置
-            ids = torch.where(pos_mask & ~padding_mask, self.mask_id, ids)
+        for i in range(seq_len):
             
             # 获取模型输出
+            id_start_time = time.time()
             logits = self.forward_with_cond_scale(motion_ids=ids, 
-                                                  frame_conds=frame_conds,
-                                                  cam_conds = cam_conds,
-                                                  depth_conds=depth_conds,
-                                                  padding_mask=padding_mask,
+                                                  frame_conds=frame_conds[:, :ids.size(1), :],
+                                                  cam_conds = cam_conds[:, :ids.size(1), :],
+                                                  depth_conds=depth_conds[:, :ids.size(1), :],
+                                                  padding_mask=padding_mask[:, :ids.size(1)],
                                                   cond_scale=cond_scale)
             
             logits = logits.permute(0, 2, 1)  # (b, seqlen, ntoken)
             
             # 只处理当前位置的logits
-            pos_logits = logits[:, pos, :].unsqueeze(1)  # (b, 1, ntoken)
+            next_logits = logits[:, -1, :]
             
             # 过滤低概率token
-            filtered_logits = top_k(pos_logits, topk_filter_thres, dim=-1)
+            filtered_logits = top_k(next_logits, topk_filter_thres, dim=-1)
             
             # 采样新token
             if gsample:
@@ -505,16 +484,13 @@ class MaskTransformer(nn.Module):
             else:
                 probs = F.softmax(filtered_logits / temperature, dim=-1)
                 pred_ids = Categorical(probs).sample()  # (b, 1)
-            
-            # 用当前pos预测更新下一个位置的ids
-            if pos + 1 < seq_len:
-                ids = torch.where(pos_mask & ~padding_mask, pred_ids, ids)
-            else:
-                # concatenate the last predicted id
-                ids = torch.cat([ids, pred_ids], dim=1)
+            id_end_time = time.time()
             if cal_latency:
-                end_time = time.time()
-                print(f"Position {pos}/{seq_len} latency: {(end_time - start_time) * 1000:.2f} ms")
+                print(f"Step {i+1}/{seq_len}, id generation time: {(id_end_time - id_start_time)*1000:.2f} ms")
+
+            # 用当前pos预测更新下一个位置的ids
+            ids = torch.cat([ids, pred_ids.view(batch_size, 1)], dim=1)
+            
         # remove bos id
         ids = ids[:, 1:]
         ids = torch.where(~lengths_to_mask(m_lens, 50), -1, ids)

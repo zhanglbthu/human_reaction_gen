@@ -100,7 +100,7 @@ def load_res_model(res_opt):
                                             clip_version=clip_version,
                                             opt=res_opt)
 
-    ckpt = torch.load(pjoin(res_opt.checkpoints_dir, res_opt.dataset_name, res_opt.name, 'model', 'net_best_loss.tar'),
+    ckpt = torch.load(pjoin(res_opt.checkpoints_dir, res_opt.dataset_name, res_opt.name, 'model', 'net_best_fid.tar'),
                       map_location=opt.device)
     missing_keys, unexpected_keys = res_transformer.load_state_dict(ckpt['res_transformer'], strict=False)
     assert len(unexpected_keys) == 0
@@ -274,7 +274,7 @@ if __name__ == '__main__':
         div = []
         mm = []
 
-        repeat_time = 20
+        repeat_time = 1
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm = \
@@ -282,10 +282,11 @@ if __name__ == '__main__':
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
-                                                                        cal_mm=True,
+                                                                        cal_mm=False,
                                                                         save_anim=False, 
                                                                         out_dir=out_dir, 
-                                                                        plot_func=plot_t2m)
+                                                                        plot_func=plot_t2m,
+                                                                        cal_latency=True)
             fid.append(eval_fid)
             div_real.append(eval_div_real)
             div.append(eval_div)
