@@ -1,6 +1,7 @@
 import os
 from os.path import join as pjoin
 
+from regex import T
 from sympy import use
 import torch
 
@@ -38,6 +39,8 @@ def plot_t2m(data, save_dir):
         joint_data = data[i]
         joint = recover_from_ric(torch.from_numpy(joint_data).float(), 22).numpy()
         save_path = pjoin(save_dir, '%02d.mp4' % (i))
+        # save joint data to .npy file
+        np.save(pjoin(save_dir, '%02d.npy' % (i)), joint)
         plot_3d_motion(save_path, kinematic_chain, joint, title="", fps=fps, radius=radius)
 
 def cal_traj_error(pred_motion, gt_motion, m_length):
@@ -136,7 +139,7 @@ def load_res_model(res_opt):
                                             clip_version=clip_version,
                                             opt=res_opt)
 
-    ckpt = torch.load(pjoin(res_opt.checkpoints_dir, res_opt.dataset_name, res_opt.name, 'model', 'net_best_loss.tar'),
+    ckpt = torch.load(pjoin(res_opt.checkpoints_dir, res_opt.dataset_name, res_opt.name, 'model', 'net_best_fid.tar'),
                       map_location=opt.device)
     missing_keys, unexpected_keys = res_transformer.load_state_dict(ckpt['res_transformer'], strict=False)
     assert len(unexpected_keys) == 0
@@ -243,7 +246,7 @@ if __name__ == '__main__':
     model_opt_path = pjoin(root_dir, 'opt.txt')
     model_opt = get_opt(model_opt_path, device=opt.device)
 
-    vq_opt_path = pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'opt.txt')
+    vq_opt_path = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'opt.txt')
     vq_opt = get_opt(vq_opt_path, device=opt.device)
     vq_model, vq_opt = load_vq_model(vq_opt)
 
@@ -262,8 +265,8 @@ if __name__ == '__main__':
 
     video_encoder = prepare_video_encoder(clip_version)
 
-    mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'mean.npy'))
-    std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'std.npy'))
+    mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'mean.npy'))
+    std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'std.npy'))
 
     eval_val_dataset = VimoDataset(opt, mean, std, data_prefix=opt.data_root, ann_file=opt.test_txt, pipeline=val_pipeline)
     eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=False, pin_memory=True)
@@ -278,7 +281,8 @@ if __name__ == '__main__':
     for file in os.listdir(model_dir):
         if opt.which_epoch != "all" and opt.which_epoch not in file:
             continue
-        # if file is not "net_best_fid.tar":
+        if file != "net_best_acc.tar":
+            continue
         if not file.endswith('.tar'):
             continue
         print('loading checkpoint {}'.format(file))
@@ -300,7 +304,7 @@ if __name__ == '__main__':
         mm = []
         traj = []
 
-        repeat_time = 20
+        repeat_time = 3
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm, eval_traj = \
@@ -309,7 +313,7 @@ if __name__ == '__main__':
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
                                                                         cal_mm=False,
-                                                                        save_anim=False, 
+                                                                        save_anim=True, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
                                                                         use_res=True,
