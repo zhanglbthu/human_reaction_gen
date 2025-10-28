@@ -1,6 +1,7 @@
 {
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "evaluate_gen",
             "type": "debugpy",
@@ -28,12 +29,12 @@
             "program": "${workspaceFolder}/train_mask_transformer_dino.py",
             "console": "integratedTerminal",
             "args": [
-                "--name", "dino_debug",
+                "--name", "img_debug",
                 "--gpu_id", "0",
                 "--dataset_name", "vimo",
                 "--batch_size", "64",
-                "--max_epoch", "200",
-                "--vq_name", "rvq_bs256_finetune_ep10",
+                "--max_epoch", "10",
+                "--vq_name", "rvq_official",
                 "--milestones", "6000",
                 "--warm_up_iter", "250",
                 "--n_layers", "6",

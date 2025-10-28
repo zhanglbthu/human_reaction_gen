@@ -199,6 +199,8 @@ class MaskTransformer(nn.Module):
         self.code_dim = code_dim # 512
         self.latent_dim = latent_dim # 384
         self.clip_dim = clip_dim
+        self.dropout = dropout
+        self.opt = opt
         
         if opt.dino_encoder == 'vits':
             dino_dim = 384
@@ -210,8 +212,6 @@ class MaskTransformer(nn.Module):
             raise KeyError("Unsupported DINO encoder type!!!")
         
         self.dino_dim = dino_dim
-        self.dropout = dropout
-        self.opt = opt
         
         # cam traj
         self.cam_in_dim = 3
@@ -263,15 +263,13 @@ class MaskTransformer(nn.Module):
         _num_tokens = opt.num_tokens + 3  # two dummy tokens, one for masking, one for padding
         self.mask_id = opt.num_tokens
         self.pad_id = opt.num_tokens + 1
-        self.bos_id  = opt.num_tokens + 2
+        self.bos_id = opt.num_tokens + 2
 
         self.output_process = OutputProcess_Bert(out_feats=opt.num_tokens, latent_dim=latent_dim)
 
         self.token_emb = nn.Embedding(_num_tokens, self.code_dim)
         self.frame_cond_emb = nn.Linear(self.dino_dim, self.latent_dim)
-        
         self.cam_encoder = CamTrajEncoder(self.cam_in_dim, self.latent_dim, dropout=dropout)
-        
         self.depth_encoder = DepthEncoder(latent_dim=self.latent_dim)
 
         self.apply(self.__init_weights)
@@ -279,11 +277,6 @@ class MaskTransformer(nn.Module):
         '''
         Preparing frozen weights
         '''
-
-        if self.cond_mode == 'text':
-            print('Loading CLIP...')
-            self.clip_version = clip_version
-            self.clip_model = self.load_and_freeze_clip(clip_version)
 
         self.noise_schedule = cosine_schedule
 
@@ -425,12 +418,17 @@ class MaskTransformer(nn.Module):
         B, T = ids.shape
         device = ids.device
         
-        padding_mask = ~lengths_to_mask(m_lens, T)
+        non_pad_mask = lengths_to_mask(m_lens, T)
+        ids = torch.where(non_pad_mask, ids, self.pad_id)
         
-        # 2) BOS + teacher forcing
         bos = torch.full((B,1), self.bos_id, device=device, dtype=ids.dtype)
         x_ids = torch.cat([bos, ids[:, :-1]], dim=1)      # BOS+右移
         labels = ids 
+        
+        padding_mask = torch.cat([
+            torch.zeros((B, 1), dtype=torch.bool, device=device),  # BOS 永远不是 pad
+            ~non_pad_mask[:, :-1]  # 后面的照常 pad
+        ], dim=1)
 
         logits = self.trans_forward(x_ids, padding_mask, frame_conds, cam_conds=cam_conds, depth_conds=depth_conds)
         ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.pad_id)
@@ -451,7 +449,7 @@ class MaskTransformer(nn.Module):
 
     @torch.no_grad()
     @eval_decorator
-    def generate(self,
+    def generate_new(self,
                  m_lens,
                  timesteps: int,
                  cond_scale=3,
@@ -522,6 +520,88 @@ class MaskTransformer(nn.Module):
 
         return ids
 
+    @torch.no_grad()
+    @eval_decorator
+    def generate(self,
+                 m_lens,
+                 timesteps: int,
+                 cond_scale=3,
+                 temperature=1,
+                 topk_filter_thres=0.9,
+                 gsample=False,
+                 frame_conds=None,
+                 cam_conds=None,
+                 depth_conds=None,
+                 cal_latency=False,
+                 ):
+        '''
+        frame_conds: [B, T, clip_dim]  # 逐帧视频特征 (与 ids 对齐)
+        cam_conds:   [B, T, cam_in_dim] or None
+        '''
+
+        device = next(self.parameters()).device
+        # seq_len = max(m_lens) + 1  # +1 for BOS
+        seq_len = 50
+        batch_size = len(m_lens)
+        frame_conds = frame_conds.to(device)  # (B, T, clip_dim)
+        cam_conds = cam_conds.to(device)
+
+        # -------- padding_mask --------
+        padding_mask = torch.cat([
+            torch.zeros((batch_size, 1), dtype=torch.bool, device=device),  # BOS 永远不是 pad
+            ~lengths_to_mask(m_lens, 50)[:, :-1]  # 后面的照常 pad
+        ], dim=1)
+
+        # -------- 初始化 ids --------
+        bos_col = torch.full((batch_size, 1), self.bos_id, device=device)
+        rest_ids = torch.where(padding_mask, self.pad_id, self.mask_id)
+        ids = torch.cat([bos_col, rest_ids[:, :-1]], dim=1) # [B, seq_len]
+
+        # -------- autoregressive 生成 --------
+        for pos in range(seq_len):
+            # 创建当前位置的mask
+            pos_mask = torch.zeros_like(padding_mask)
+            
+            if pos + 1 < seq_len:
+                pos_mask[:, pos + 1] = True
+            
+            # 只mask当前位置
+            ids = torch.where(pos_mask & ~padding_mask, self.mask_id, ids)
+            
+            # 获取模型输出
+            logits = self.forward_with_cond_scale(motion_ids=ids, 
+                                                  frame_conds=frame_conds,
+                                                  cam_conds = cam_conds,
+                                                  padding_mask=padding_mask,
+                                                  cond_scale=cond_scale)
+            
+            logits = logits.permute(0, 2, 1)  # (b, seqlen, ntoken)
+            
+            # 只处理当前位置的logits
+            pos_logits = logits[:, pos, :].unsqueeze(1)  # (b, 1, ntoken)
+            
+            # 过滤低概率token
+            filtered_logits = top_k(pos_logits, topk_filter_thres, dim=-1)
+            
+            # 采样新token
+            if gsample:
+                pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+            else:
+                probs = F.softmax(filtered_logits / temperature, dim=-1)
+                pred_ids = Categorical(probs).sample()  # (b, 1)
+            
+            # 用当前pos预测更新下一个位置的ids
+            if pos + 1 < seq_len:
+                ids = torch.where(pos_mask & ~padding_mask, pred_ids, ids)
+            else:
+                # concatenate the last predicted id
+                ids = torch.cat([ids, pred_ids], dim=1)
+        # remove bos id
+        ids = ids[:, 1:]
+        ids = torch.where(~lengths_to_mask(m_lens, 50), -1, ids)
+
+        return ids
+    
     @torch.no_grad()
     @eval_decorator
     def edit(self,
