@@ -8,18 +8,25 @@ def update_test_file(test_file, videos_new_root, output_file):
     updated_lines = []
 
     for line in lines:
-        video_path, label_path = line.split()
+        video_path, label_path, depth_path = line.split()[0], line.split()[1], line.split()[2]
         # Extract video type and sequence name, e.g. automobile_rush_towards, automobile_rush_towards-001
         parts = video_path.split('/')
         if len(parts) < 3:
             print(f"⚠️ Skip invalid line: {line}")
             continue
-        video_type = parts[1]                # e.g. automobile_rush_towards
-        video_seq = parts[2].replace(".mp4", "")  # e.g. automobile_rush_towards-001
+        elif len(parts) == 3:
+            video_type = parts[1]                # e.g. automobile_rush_towards
+            video_seq = parts[2].replace(".mp4", "")  # e.g. automobile_rush_towards-001
+        elif len(parts) == 6:
+            video_type = parts[2]                # e.g. automobile_rush_towards
+            video_seq = parts[3].replace(".mp4", "")  # e.g. automobile_rush_towards-001
+        else:
+            print(f"⚠️ Skip invalid line: {line}")
+            continue
 
         # Construct expected directory in videos_new
-        search_dir = os.path.join(videos_new_root, video_type, video_seq)
-
+        search_dir = os.path.join(videos_new_root, video_type)
+        
         # Find gen.mp4 recursively in that directory
         new_video_path = None
         if os.path.exists(search_dir):
@@ -31,8 +38,7 @@ def update_test_file(test_file, videos_new_root, output_file):
 
         # If found, replace the path
         if new_video_path:
-            updated_line = f"{new_video_path} {label_path}"
-            print(f"✅ gen.mp4 found for: {video_seq}")
+            updated_line = f"{new_video_path} {label_path} {depth_path}"
         else:
             # Keep the original if not found
             updated_line = line
@@ -52,8 +58,8 @@ if __name__ == "__main__":
     # test_file = "test.txt"
     # videos_new_root = "videos_new"
     # output_file = "test_updated.txt"
-    test_file = os.path.join(root_dir, "train.txt")
+    test_file = os.path.join(root_dir, "test_spatial.txt")
     videos_new_root = os.path.join(root_dir, "videos_new", "expert")
-    output_file = os.path.join(root_dir, "train_spatial.txt")
+    output_file = os.path.join(root_dir, "test_new.txt")
 
     update_test_file(test_file, videos_new_root, output_file)
