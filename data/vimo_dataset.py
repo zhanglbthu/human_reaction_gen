@@ -275,7 +275,7 @@ class VimoDataset(VimoBaseDataset):
         with open(ann_file_path, 'r') as fin:
             for line in fin:
                 line_split = line.strip().split()
-                video_name, motion_name = line_split
+                video_name, motion_name = line_split[:2]
                 video_name = osp.join(self.data_prefix, video_name)
                 motion_name = osp.join(self.data_prefix, motion_name)
                 motion = np.load(motion_name) # [N, 263]
