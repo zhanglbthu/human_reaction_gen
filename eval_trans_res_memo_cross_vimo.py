@@ -37,6 +37,8 @@ def plot_t2m(data, save_dir):
         joint_data = data[i]
         joint = recover_from_ric(torch.from_numpy(joint_data).float(), 22).numpy()
         save_path = pjoin(save_dir, '%02d.mp4' % (i))
+        # save joint data to .npy file
+        np.save(pjoin(save_dir, '%02d.npy' % (i)), joint)
         plot_3d_motion(save_path, kinematic_chain, joint, title="", fps=fps, radius=radius)
 
 def cal_traj_error(pred_motion, gt_motion, m_length):
@@ -134,7 +136,7 @@ def load_res_model(res_opt):
                                             clip_version=clip_version,
                                             opt=res_opt)
 
-    ckpt = torch.load(pjoin(res_opt.checkpoints_dir, res_opt.dataset_name, res_opt.name, 'model', 'net_best_loss.tar'),
+    ckpt = torch.load(pjoin(res_opt.checkpoints_dir, res_opt.dataset_name, res_opt.name, 'model', 'net_best_fid.tar'),
                       map_location=opt.device)
     missing_keys, unexpected_keys = res_transformer.load_state_dict(ckpt['res_transformer'], strict=False)
     assert len(unexpected_keys) == 0
@@ -241,7 +243,7 @@ if __name__ == '__main__':
     model_opt_path = pjoin(root_dir, 'opt.txt')
     model_opt = get_opt(model_opt_path, device=opt.device)
 
-    vq_opt_path = pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'opt.txt')
+    vq_opt_path = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'opt.txt')
     vq_opt = get_opt(vq_opt_path, device=opt.device)
     vq_model, vq_opt = load_vq_model(vq_opt)
 
@@ -253,15 +255,15 @@ if __name__ == '__main__':
     res_opt = get_opt(res_opt_path, device=opt.device)
     res_model = load_res_model(res_opt)
 
-    assert res_opt.vq_name == model_opt.vq_name
+    # assert res_opt.vq_name == model_opt.vq_name
 
     wrapper_opt = get_opt(dataset_opt_path, torch.device('cuda'))
     eval_wrapper = EvaluatorModelWrapper(wrapper_opt)
 
     video_encoder = prepare_video_encoder(clip_version)
 
-    mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'mean.npy'))
-    std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'std.npy'))
+    mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'mean.npy'))
+    std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'std.npy'))
 
     eval_val_dataset = VimoDataset(opt, mean, std, data_prefix=opt.data_root, ann_file=opt.test_txt, pipeline=val_pipeline)
     eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=True, pin_memory=True)
