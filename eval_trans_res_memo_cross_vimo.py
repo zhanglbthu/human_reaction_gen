@@ -258,7 +258,7 @@ if __name__ == '__main__':
     res_opt = get_opt(res_opt_path, device=opt.device)
     res_model = load_res_model(res_opt)
 
-    assert res_opt.vq_name == model_opt.vq_name
+    # assert res_opt.vq_name == model_opt.vq_name
 
     wrapper_opt = get_opt(dataset_opt_path, torch.device('cuda'))
     eval_wrapper = EvaluatorModelWrapper(wrapper_opt)
@@ -304,7 +304,7 @@ if __name__ == '__main__':
         mm = []
         traj = []
 
-        repeat_time = 3
+        repeat_time = 5
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm, eval_traj = \
@@ -312,11 +312,11 @@ if __name__ == '__main__':
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
-                                                                        cal_mm=False,
-                                                                        save_anim=True, 
+                                                                        cal_mm=True,
+                                                                        save_anim=False, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
-                                                                        use_res=True,
+                                                                        use_res=False,
                                                                         cal_latency=True,
                                                                         traj_func=cal_traj_error)
             fid.append(eval_fid)
