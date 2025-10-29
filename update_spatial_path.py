@@ -26,16 +26,20 @@ def update_test_file(test_file, videos_new_root, output_file):
 
         # Construct expected directory in videos_new
         search_dir = os.path.join(videos_new_root, video_type)
-        
+
         # Find gen.mp4 recursively in that directory
         new_video_path = None
         if os.path.exists(search_dir):
-            for root, _, files in os.walk(search_dir):
-                if "gen.mp4" in files:
-                    rel_path = os.path.relpath(os.path.join(root, "gen.mp4"), videos_new_root)
+            # 查询video_seq是否存在于子目录中
+            print(f"video_seq: {video_seq}")
+            
+            subdirs = os.listdir(search_dir)
+            for subdir in subdirs:
+                candidate_path = os.path.join(search_dir, subdir, "gen.mp4")
+                if os.path.exists(candidate_path):
+                    rel_path = os.path.relpath(candidate_path, videos_new_root)
                     new_video_path = f"videos_new/expert/{rel_path}".replace("\\", "/")
                     break
-
         # If found, replace the path
         if new_video_path:
             updated_line = f"{new_video_path} {label_path} {depth_path}"
@@ -60,6 +64,6 @@ if __name__ == "__main__":
     # output_file = "test_updated.txt"
     test_file = os.path.join(root_dir, "test_spatial.txt")
     videos_new_root = os.path.join(root_dir, "videos_new", "expert")
-    output_file = os.path.join(root_dir, "test_new.txt")
+    output_file = os.path.join(root_dir, "test_debug.txt")
 
     update_test_file(test_file, videos_new_root, output_file)
