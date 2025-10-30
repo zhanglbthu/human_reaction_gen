@@ -305,8 +305,8 @@ if __name__ == '__main__':
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
-                                                                        cal_mm=False,
-                                                                        save_anim=True, 
+                                                                        cal_mm=True,
+                                                                        save_anim=False, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
                                                                         traj_func=cal_traj_error)

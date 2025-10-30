@@ -1889,7 +1889,7 @@ class SampleFrames:
                  num_clips=1,
                  temporal_jitter=False,
                  twice_sample=False,
-                 out_of_bound_opt='loop',
+                 out_of_bound_opt='repeat_last',
                  test_mode=False,
                  start_index=None,
                  frame_uniform=False,
@@ -2017,6 +2017,7 @@ class SampleFrames:
                 to the next transform in pipeline.
         """
         total_frames = results['total_frames']
+
         if self.frame_uniform:  # sthv2 sampling strategy
             assert results['start_index'] == 0
             frame_inds = self.get_seq_frames(total_frames)
@@ -2046,8 +2047,6 @@ class SampleFrames:
             start_index = results['start_index']
             frame_inds = np.concatenate(frame_inds) + start_index
 
-        # if total_frames < 32:
-        # print(results['filename'], total_frames, frame_inds)
         results['frame_inds'] = frame_inds.astype(np.int)
         results['clip_len'] = self.clip_len
         results['frame_interval'] = self.frame_interval
