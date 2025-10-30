@@ -289,28 +289,33 @@ class MaskTransformer(nn.Module):
         '''
 
         cond = self.mask_cond(cond, force_mask=force_mask)
-
-        # token_emb (nn.Embedding): 将每个 token ID 映射为 code_dim 维的向量
-        x = self.token_emb(motion_ids)
-        # (b, seqlen, d) -> (seqlen, b, latent_dim)
-        x = self.input_process(x)
-
         cond = self.cond_emb(cond).unsqueeze(0) #(1, b, latent_dim)
 
-        x = self.position_enc(x)
-        xseq = torch.cat([cond, x], dim=0) #(seqlen+1, b, latent_dim)
+        if motion_ids is not None:
+            # * 如果 motion_ids 不为 None，则拼接条件向量和输入序列
+            
+            # token_emb (nn.Embedding): 将每个 token ID 映射为 code_dim 维的向量
+            x = self.token_emb(motion_ids)
+            # (b, seqlen, d) -> (seqlen, b, latent_dim)
+            x = self.input_process(x)  # [seqlen, bs, d]
+            x = self.position_enc(x)
+            xseq = torch.cat([cond, x], dim=0) #(seqlen+1, b, latent_dim)
 
-        padding_mask = torch.cat([torch.zeros_like(padding_mask[:, 0:1]), padding_mask], dim=1) #(b, seqlen+1)
+            padding_mask = torch.cat([torch.zeros_like(padding_mask[:, 0:1]), padding_mask], dim=1) #(b, seqlen+1)
+        else:
+            # * 只使用条件向量进行预测
+            xseq = cond
+            padding_mask = torch.zeros(cond.shape[1], 1).bool().to(cond.device)  #(b, 1)
         
         # TODO: add causal mask
         seq_len = xseq.shape[0]
         causal_mask = torch.triu(torch.ones((seq_len, seq_len), device=xseq.device), diagonal=1).bool()
-        
-        # 不使用cross attention, 定义dummy memory
-        # dummy_memory = torch.zeros_like(memory) 
-        output = self.seqTransEncoder(src=xseq,  
+         
+        # * [conds, x1, x2, ..., xn-1] -> [x1, x2, ..., xn]
+        output = self.seqTransEncoder(src=xseq,
+                                      mask=causal_mask,
                                       src_key_padding_mask=padding_mask, 
-                                      mask=causal_mask)[1:] #(seqlen, b, e)
+                                      is_causal=True)
         logits = self.output_process(output) #(seqlen, b, e) -> (b, ntoken, seqlen)
         return logits
 
@@ -329,6 +334,7 @@ class MaskTransformer(nn.Module):
         # Positions that are PADDED are ALL FALSE
         non_pad_mask = lengths_to_mask(m_lens, ntokens) #(b, n)
         ids = torch.where(non_pad_mask, ids, self.pad_id)
+        
         '''
         ids: [id1, id2, id3, id4, id5] -> [id1, id2, id3, 513, 513]
         '''
@@ -350,9 +356,9 @@ class MaskTransformer(nn.Module):
             raise NotImplementedError("Unsupported condition mode!!!")
         # endregion
         
-        # TODO: change to decoder-only transformer
+        # TODO: change to autoregressive transformer
         x_ids = ids[:, :-1]  
-        labels = ids[:, 1:]  
+        labels = ids  
         padding_mask = ~non_pad_mask[:, :-1]  
         
         logits = self.trans_forward(x_ids, cond_vector, padding_mask, force_mask, memory)
@@ -385,84 +391,82 @@ class MaskTransformer(nn.Module):
 
     @torch.no_grad()
     @eval_decorator
-    def generate(self,
-                 conds, # attention_features_mean: [B, 512]
-                 m_lens,
-                 timesteps: int,
-                 cond_scale: int,
-                 temperature=1,
-                 topk_filter_thres=0.9,
-                 gsample=False,
-                 force_mask=False,
-                 memory=None
-                 ):
-        # print(self.opt.num_quantizers)
-        # assert len(timesteps) >= len(cond_scales) == self.opt.num_quantizers
-
+    def generate(
+        self,
+        conds,                 # [B, clip_dim]
+        m_lens,
+        timesteps: int,        # 最大生成长度
+        cond_scale: int,
+        temperature=1.0,
+        topk_filter_thres=0.9,
+        gsample=False,
+        force_mask=False,
+        memory=None
+    ):
         device = next(self.parameters()).device
-        seq_len = max(m_lens)
         batch_size = len(m_lens)
+        seq_len = max(m_lens)
 
-        if self.cond_mode == 'text':
-            with torch.no_grad():
-                cond_vector = self.encode_text(conds)
-        elif self.cond_mode == 'video':
-            with torch.no_grad():
-                cond_vector = conds
-        elif self.cond_mode == 'action':
+        # 处理条件向量
+        if self.cond_mode == "text":
+            cond_vector = self.encode_text(conds)
+        elif self.cond_mode == "video":
+            cond_vector = conds
+        elif self.cond_mode == "action":
             cond_vector = self.enc_action(conds).to(device)
-        elif self.cond_mode == 'uncond':
-            cond_vector = torch.zeros(batch_size, self.latent_dim).float().to(device)
+        elif self.cond_mode == "uncond":
+            cond_vector = torch.zeros(batch_size, self.latent_dim, device=device)
         else:
             raise NotImplementedError("Unsupported condition mode!!!")
 
-        # mask padding tokens
-        # e.g. m_lens = [3, 5, 2], seq_len = 5
-        # padding_mask = [[False, False, False, True, True],
-        #                 [False, False, False, False, False],
-        #                 [False, False, True, True, True]]
-        padding_mask = ~lengths_to_mask(m_lens, seq_len)
-        # print(padding_mask.shape, )
+        # 初始化：当前没有 motion token，仅 cond
+        ids = None
+        generated = []
 
-        # Start from all tokens being masked
-        # ids: if padding_mask is True, use pad_id, else use mask_id
-        ids = torch.where(padding_mask, self.pad_id, self.mask_id)
-
-        # TODO: change to autoregressive generation
-        for pos in range(seq_len):
-            # 创建当前位置的mask
-            pos_mask = torch.zeros_like(padding_mask)
-            pos_mask[:, pos] = True
-            
-            # 只mask当前位置
-            ids = torch.where(pos_mask & ~padding_mask, self.mask_id, ids)
-            
-            # 获取模型输出
-            logits = self.forward_with_cond_scale(ids, cond_vector=cond_vector,
-                                                  padding_mask=padding_mask,
-                                                  cond_scale=cond_scale,
-                                                  force_mask=force_mask)
-            
-            logits = logits.permute(0, 2, 1)  # (b, seqlen, ntoken)
-            
-            # 只处理当前位置的logits
-            pos_logits = logits[:, pos, :].unsqueeze(1)  # (b, 1, ntoken)
-            
-            # 过滤低概率token
-            filtered_logits = top_k(pos_logits, topk_filter_thres, dim=-1)
-            
-            # 采样新token
-            if gsample:
-                pred_ids = gumbel_sample(filtered_logits, temperature=temperature, dim=-1)
+        for step in range(seq_len):
+            # padding mask：已有 token 均有效
+            if ids is None:
+                padding_mask = torch.zeros((batch_size, 1), dtype=torch.bool, device=device)
             else:
-                probs = F.softmax(filtered_logits / temperature, dim=-1)
-                pred_ids = Categorical(probs).sample()  # (b, seqlen)
-            
-            # 更新当前位置的token
-            ids = torch.where(pos_mask & ~padding_mask, pred_ids, ids)
+                padding_mask = torch.zeros((batch_size, ids.shape[1]), dtype=torch.bool, device=device)
 
-        ids = torch.where(padding_mask, -1, ids)
-        # print("Final", ids.max(), ids.min())
+            # 前向
+            logits = self.forward_with_cond_scale(
+                motion_ids=ids,
+                cond_vector=cond_vector,
+                padding_mask=padding_mask,
+                cond_scale=cond_scale,
+                force_mask=force_mask
+            )                    # (b, num_token, seqlen)
+            logits = logits.permute(0, 2, 1)  # -> (b, seqlen, num_token)
+
+            # 取最后一个位置预测下一个 token
+            next_logits = logits[:, -1, :]    # (b, num_token)
+            next_logits = top_k(next_logits, topk_filter_thres, dim=-1)
+
+            # 采样
+            if gsample:
+                next_id = gumbel_sample(next_logits, temperature=temperature, dim=-1)
+            else:
+                probs = F.softmax(next_logits / temperature, dim=-1)
+                next_id = Categorical(probs).sample()  # (b,)
+
+            # 拼接到已有序列
+            next_id = next_id.unsqueeze(1)
+            if ids is None:
+                ids = next_id
+            else:
+                ids = torch.cat([ids, next_id], dim=1)
+
+            generated.append(next_id)
+
+        # mask 掉 padding 位置（如果有）
+        full_len = max(m_lens)
+        if ids.shape[1] < full_len:
+            pad = torch.full((batch_size, full_len - ids.shape[1]), self.pad_id, device=device)
+            ids = torch.cat([ids, pad], dim=1)
+
+        ids = torch.where(~lengths_to_mask(m_lens, ids.shape[1]), -1, ids)
         return ids
 
     @torch.no_grad()

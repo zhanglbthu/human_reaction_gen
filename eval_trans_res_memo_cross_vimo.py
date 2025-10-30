@@ -134,7 +134,7 @@ def load_res_model(res_opt):
                                             clip_version=clip_version,
                                             opt=res_opt)
 
-    ckpt = torch.load(pjoin(res_opt.checkpoints_dir, res_opt.dataset_name, res_opt.name, 'model', 'net_best_loss.tar'),
+    ckpt = torch.load(pjoin(res_opt.checkpoints_dir, res_opt.dataset_name, res_opt.name, 'model', 'net_best_fid.tar'),
                       map_location=opt.device)
     missing_keys, unexpected_keys = res_transformer.load_state_dict(ckpt['res_transformer'], strict=False)
     assert len(unexpected_keys) == 0

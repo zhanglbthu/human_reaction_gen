@@ -28,15 +28,17 @@
             "program": "${workspaceFolder}/train_mask_transformer.py",
             "console": "integratedTerminal",
             "args": [
-                "--name", "mtrans_memo_cross_l6_bs64_ep200",
+                "--name", "mtrans_debug",
                 "--gpu_id", "0",
                 "--dataset_name", "vimo",
                 "--batch_size", "64",
-                "--max_epoch", "200",
-                "--vq_name", "rvq_bs256_finetune_ep10",
+                "--max_epoch", "20",
+                "--vq_name", "rvq_official",
                 "--milestones", "6000",
                 "--warm_up_iter", "250",
-                "--n_layers", "6"
+                "--n_layers", "6",
+                "--test_txt", "debug.txt",
+                "--train_txt", "debug.txt"
             ],
             "justMyCode": false
         }

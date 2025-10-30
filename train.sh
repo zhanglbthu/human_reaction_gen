@@ -1,12 +1,12 @@
 export CUDA_VISIBLE_DEVICES=0
 
 python train_mask_transformer.py \
-    --name ar_1011_new \
+    --name ar_1030 \
     --gpu_id 0 \
     --dataset_name vimo \
     --batch_size 64 \
-    --max_epoch 200 \
-    --vq_name rvq_bs256_finetune_ep10 \
+    --max_epoch 50 \
+    --vq_name rvq_official \
     --milestones 6000 \
     --warm_up_iter 250 \
     --n_layers 6 \
