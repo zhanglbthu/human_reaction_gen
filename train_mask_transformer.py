@@ -78,7 +78,7 @@ def load_clip_to_cpu(model_arch):
                     "text_block": "ResidualAttentionBlock",
                     "use_custom_attention": True,
                     "context_length": 30,
-                    "temporal_length": 16,
+                    "temporal_length": 50,
                     "vision_depth": 0,
                     "language_depth": 1,
                     "vision_ctx": 0,

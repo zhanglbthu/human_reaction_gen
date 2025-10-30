@@ -13,6 +13,7 @@ import warnings
 warnings.filterwarnings(action='ignore', module='mmcv', category=UserWarning)
 
 from .pipeline import *
+import torch.nn.functional as F
 
 
 def collate_fn(batch):
@@ -93,7 +94,6 @@ class VimoMotionDataset(Dataset):
 
         return motion
     
-
 class VimoMotionDatasetEval(Dataset):
     def __init__(self, opt, mean, std, split_file):
         self.opt = opt
@@ -173,12 +173,10 @@ class VimoMotionDatasetEval(Dataset):
                                      ], axis=0)
         
         return motion, m_length
-    
 
 PIPELINES = Registry('pipeline')
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
-
 
 class VimoBaseDataset(Dataset, metaclass=ABCMeta):
     def __init__(self, opt, mean, std,
@@ -237,18 +235,101 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         "Z Normalization"
         motion = (motion - self.mean) / self.std
 
-        if m_length < self.max_motion_length:
-            motion = np.concatenate([motion,
-                                     np.zeros((self.max_motion_length - m_length, motion.shape[1]))
-                                     ], axis=0)
+        imgs = results['imgs']
+        imgs, motion, cam_traj, depth = self.align_and_pad_modalities(imgs, motion, m_length, self.max_motion_length, depth=None, cam_traj=None)
+        
+        imgs = imgs[::4, :, :, :]  
+        cam_traj = cam_traj[::4, :] if cam_traj is not None else None
+        depth = depth[::4, :, :] if depth is not None else None
 
-        # del results['label']
-        # results['motion'] = motion
-        # results['motion_length'] = m_length
-        # return results
+        return imgs, motion, m_length, results['filename']
+    
+    def align_and_pad_modalities(
+        self, 
+        imgs: torch.Tensor,
+        motion: np.ndarray,
+        m_length: int,
+        max_motion_length: int,
+        depth: np.ndarray = None,
+        cam_traj: torch.Tensor = None
+        ):
+        """
+        对齐并补齐视频帧 imgs、动作 motion 和相机轨迹 cam_traj, 使它们长度一致为 max_motion_length。
+        同时对视频帧进行时间插值到 m_length 帧。
 
-        return results['imgs'], motion, m_length, results['filename']
+        Args:
+            imgs (torch.Tensor): [T, C, H, W]
+            motion (np.ndarray): [T, D]
+            cam_traj (torch.Tensor): [T, 3]
+            m_length (int): 有效的帧长度
+            max_motion_length (int): 模型要求的最大时间长度
 
+        Returns:
+            imgs (torch.Tensor): [max_motion_length, C, H, W]
+            motion (np.ndarray): [max_motion_length, D]
+            cam_traj (torch.Tensor): [max_motion_length, 3]
+        """
+        T, C, H, W = imgs.shape
+
+        # ====== Step 1. 插值视频到 m_length 帧 ======
+        imgs = imgs.permute(1, 0, 2, 3).unsqueeze(0)  # [1, C, T, H, W]
+        imgs_resampled = F.interpolate(
+            imgs, size=(m_length, H, W), mode='trilinear', align_corners=False
+        ).squeeze(0).permute(1, 0, 2, 3)  # [m_length, C, H, W]
+        
+        # depth插值到 m_length 帧
+        if depth is not None:
+            depth = torch.from_numpy(depth).unsqueeze(0).unsqueeze(0) # [1, 1, T, H, W]
+            depth_resampled = F.interpolate(
+                depth, size=(m_length, H, W), mode='trilinear', align_corners=False
+            ).squeeze(0).squeeze(0).numpy()  # [m_length, H, W]
+        
+        # ====== Step 2. padding 或 crop ======
+        if m_length < max_motion_length:
+            pad_T = max_motion_length - m_length
+
+            # motion 补0
+            motion = np.concatenate(
+                [motion, np.zeros((pad_T, motion.shape[1]))], axis=0
+            )
+
+            # imgs 补0帧
+            pad_imgs = torch.zeros(
+                (pad_T, C, H, W), dtype=imgs_resampled.dtype, device=imgs_resampled.device
+            )
+            imgs = torch.cat([imgs_resampled, pad_imgs], dim=0)
+
+            # cam_traj 补0
+            if cam_traj is not None:
+                pad_traj = torch.zeros(
+                    (pad_T, 3), dtype=cam_traj.dtype, device=cam_traj.device
+                )
+                cam_traj = torch.cat([cam_traj, pad_traj], dim=0)
+            
+            # depth 补0
+            if depth is not None:
+                pad_depth = np.zeros(
+                    (pad_T, depth_resampled.shape[1], depth_resampled.shape[2])
+                )
+                depth = np.concatenate([depth_resampled, pad_depth], axis=0)
+
+        else:
+            # 超长则截断
+            motion = motion[:max_motion_length]
+            imgs = imgs_resampled[:max_motion_length]
+            if cam_traj is not None:
+                cam_traj = cam_traj[:max_motion_length]
+            if depth is not None:
+                depth = depth_resampled[:max_motion_length]
+
+        assert imgs.shape[0] == motion.shape[0] == max_motion_length, \
+            f"Shape mismatch: imgs={imgs.shape[0]}, motion={motion.shape[0]}, target={max_motion_length}"
+        
+        # # print images shape and motion shape
+        # print(f"Aligned shapes: imgs={imgs.shape}, motion={motion.shape}")
+        
+        return imgs, motion, cam_traj, depth
+    
     def __len__(self):
         """Get the size of the dataset."""
         return len(self.video_infos)
@@ -259,7 +340,6 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
     
     def inv_transform(self, data):
         return data * self.std + self.mean
-
 
 class VimoDataset(VimoBaseDataset):
     def __init__(self, opt, mean, std, data_prefix, ann_file, pipeline, start_index=0, **kwargs):
@@ -285,7 +365,7 @@ class VimoDataset(VimoBaseDataset):
 
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_bgr=False)
 config_input_size = 224
-config_num_frames = 16
+config_num_frames = 100
 config_num_clip = 1
 config_num_crop = 1
 scale_resize = int(256 / 224 * config_input_size)

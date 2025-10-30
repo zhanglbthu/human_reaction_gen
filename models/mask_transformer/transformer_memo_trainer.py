@@ -41,7 +41,7 @@ class MaskTransformerTrainer:
         
         imgs, motion, m_lens, video_path = batch_data # imgs: [B, T, C, H, W]
         '''
-        imgs: [64, 16, 3, 224, 224]
+        imgs: [64, 50, 3, 224, 224]
         motion: [64, 200, 263]
         m_lens: [64]
         '''

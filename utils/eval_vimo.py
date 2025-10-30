@@ -883,9 +883,10 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
     # assert num_quantizer >= len(time_steps) and num_quantizer >= len(cond_scales)
 
     nb_sample = 0
-    # for i in range(1):
+
     for batch in val_loader:
         imgs, pose, m_length, video_path = batch
+
         at_features_mean, at_features = video_encoder(imgs.cuda())
         at_features_mean = at_features[:,0,:] # [B, 512]
         

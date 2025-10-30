@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=0
 
 python train_mask_transformer.py \
-    --name ar_1030 \
+    --name ar_firstImgConds \
     --gpu_id 0 \
     --dataset_name vimo \
     --batch_size 64 \
