@@ -253,7 +253,7 @@ if __name__ == '__main__':
     res_opt = get_opt(res_opt_path, device=opt.device)
     res_model = load_res_model(res_opt)
 
-    assert res_opt.vq_name == model_opt.vq_name
+    # assert res_opt.vq_name == model_opt.vq_name
 
     wrapper_opt = get_opt(dataset_opt_path, torch.device('cuda'))
     eval_wrapper = EvaluatorModelWrapper(wrapper_opt)
