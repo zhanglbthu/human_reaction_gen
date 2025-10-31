@@ -10,6 +10,8 @@ class BaseOptions():
     def initialize(self):
         self.parser.add_argument('--name', type=str, default="t2m_nlayer8_nhead6_ld384_ff1024_cdp0.1_rvq6ns", help='Name of this trial')
         self.parser.add_argument('--exp_name', type=str, default="debug")
+        self.parser.add_argument('--use_traj', action='store_true')
+        self.parser.add_argument('--use_depth', action='store_true')
 
         self.parser.add_argument('--vq_name', type=str, default="rvq_nq1_dc512_nc512", help='Name of the rvq model.')
 

@@ -15,6 +15,8 @@ warnings.filterwarnings(action='ignore', module='mmcv', category=UserWarning)
 from .pipeline import *
 import torch.nn.functional as F
 
+from .data_utils import get_head_traj
+
 
 def collate_fn(batch):
     batch.sort(key=lambda x: x[3], reverse=True)
@@ -231,18 +233,31 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
             m_length = (m_length // self.opt.unit_length) * self.opt.unit_length 
         idx = random.randint(0, len(motion) - m_length)
         motion = motion[idx:idx+m_length]
+        
+        global_traj = get_head_traj(motion)  # (m_length, 3)
+        global_traj = global_traj - global_traj[0:1, :]  # make start point at origin
+        cam_traj = torch.from_numpy(global_traj).float() 
 
         "Z Normalization"
         motion = (motion - self.mean) / self.std
 
         imgs = results['imgs']
-        imgs, motion, cam_traj, depth = self.align_and_pad_modalities(imgs, motion, m_length, self.max_motion_length, depth=None, cam_traj=None)
+        imgs, motion, cam_traj, depth = self.align_and_pad_modalities(imgs, motion, m_length, self.max_motion_length, depth=None, cam_traj=cam_traj)
         
-        imgs = imgs[::4, :, :, :]  
-        cam_traj = cam_traj[::4, :] if cam_traj is not None else None
-        depth = depth[::4, :, :] if depth is not None else None
+        imgs = imgs[::4, :, :, :] 
+        # # else 初始化为zero
+        # cam_traj = cam_traj[::4, :] if cam_traj is not None else None
+        # depth = depth[::4, :, :] if depth is not None else None
+        if cam_traj is not None:
+            cam_traj = cam_traj[::4, :]
+        else:
+            cam_traj = torch.zeros((self.max_motion_length//4, 3), dtype=torch.float16)
+        if depth is not None:
+            depth = depth[::4, :, :]
+        else:
+            depth = np.zeros((self.max_motion_length//4, imgs.shape[2], imgs.shape[3]))
 
-        return imgs, motion, m_length, results['filename']
+        return imgs, motion, m_length, results['filename'], cam_traj, depth
     
     def align_and_pad_modalities(
         self, 

@@ -39,18 +39,17 @@ class MaskTransformerTrainer:
 
     def forward(self, batch_data):
         
-        imgs, motion, m_lens, video_path = batch_data # imgs: [B, T, C, H, W]
+        imgs, motion, m_lens, video_path, cam_traj, depth = batch_data # imgs: [B, T, C, H, W]
         '''
         imgs: [64, 50, 3, 224, 224]
         motion: [64, 200, 263]
         m_lens: [64]
         '''
-        at_features_mean, at_features = self.video_encoder(imgs.cuda()) # at_features_mean: [B, 512], at_features: [B, T, 512]
+        at_features = self.video_encoder(imgs.cuda()) # at_features_mean: [B, 512], at_features: [B, T, 512]
         '''
         at_features_mean: [64, 512]
         at_features: [64, 16, 512]
         '''
-        conds = at_features_mean
         
         # change: using first frame as condition
         conds = at_features[:,0,:] # [B, 512]
@@ -67,7 +66,7 @@ class MaskTransformerTrainer:
 
         conds = conds.to(self.device).float() if torch.is_tensor(conds) else conds
 
-        _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], conds, m_lens, at_features)
+        _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], conds, m_lens, at_features, cam_traj, depth)
 
         return _loss, _acc
 

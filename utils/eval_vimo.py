@@ -885,9 +885,9 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
     nb_sample = 0
 
     for batch in val_loader:
-        imgs, pose, m_length, video_path = batch
+        imgs, pose, m_length, video_path, cam_traj, depth = batch
 
-        at_features_mean, at_features = video_encoder(imgs.cuda())
+        at_features = video_encoder(imgs.cuda())
         at_features_mean = at_features[:,0,:] # [B, 512]
         
         m_length = m_length.cuda()
@@ -896,7 +896,11 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
         # num_joints = 21 if pose.shape[-1] == 251 else 22
 
         # (b, seqlen)
-        mids = trans.generate(at_features_mean, m_length//4, time_steps, cond_scale, temperature=1, memory=at_features)
+        mids = trans.generate(at_features_mean, m_length//4, 
+                              time_steps, cond_scale, 
+                              temperature=1, 
+                              cam_conds=cam_traj,
+                              depth_conds=depth)
 
         # motion_codes = motion_codes.permute(0, 2, 1)
         mids.unsqueeze_(-1)
@@ -1492,8 +1496,8 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         imgs: [B, 16, 3, 224, 224]
         pose: [B, 200, 263]
         '''
-        imgs, pose, m_length, video_path = batch
-        at_features_mean, at_features = video_encoder(imgs.cuda()) 
+        imgs, pose, m_length, video_path, cam_traj, depth = batch
+        at_features = video_encoder(imgs.cuda()) 
         # at_features_mean: [B, 512], Global visual representation
         # at_features: [B, 16, 512], Local visual representation
         
@@ -1510,9 +1514,16 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         # (b, seqlen, c)
             motion_multimodality_batch = []
             for _ in range(30):
-                mids = trans.generate(at_features_mean, m_length // 4, time_steps, cond_scale,
-                                      temperature=temperature, topk_filter_thres=topkr,
-                                      gsample=gsample, force_mask=force_mask, memory=at_features)
+                mids = trans.generate(at_features_mean, 
+                                      m_length // 4, 
+                                      time_steps, cond_scale,
+                                      temperature=temperature, 
+                                      topk_filter_thres=topkr,
+                                      gsample=gsample, 
+                                      force_mask=force_mask, 
+                                      cam_conds=cam_traj,
+                                      depth_conds=depth,
+                                      )
                 # mids: [B, 49]
                 # Mask Transformer在video condition下生成Base-layer的VQ Token id
                 
@@ -1533,7 +1544,9 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         else:
             mids = trans.generate(at_features_mean, m_length // 4, time_steps, cond_scale,
                                   temperature=temperature, topk_filter_thres=topkr,
-                                  force_mask=force_mask, memory=at_features)
+                                  force_mask=force_mask,
+                                  cam_conds=cam_traj,
+                                  depth_conds=depth)
 
             # pred_ids = res_model.generate(mids, at_features_mean, m_length // 4, temperature=1, cond_scale=res_cond_scale, memory=at_features)
             

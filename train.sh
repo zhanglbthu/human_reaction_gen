@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=0
 
 python train_mask_transformer.py \
-    --name ar_firstImgConds \
+    --name ar_dinoCond_traj \
     --gpu_id 0 \
     --dataset_name vimo \
     --batch_size 64 \
@@ -11,4 +11,5 @@ python train_mask_transformer.py \
     --warm_up_iter 250 \
     --n_layers 6 \
     --train_txt train_spatial.txt \
-    --test_txt test_spatial.txt
+    --test_txt test_spatial.txt \
+    --use_traj 

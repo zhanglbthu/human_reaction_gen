@@ -148,6 +148,19 @@ class CrossattBlock(nn.Module):
         x = x + self.mlp(self.ln2(x))
         return x
 
+class CamTrajEncoder(nn.Module):
+    def __init__(self, cam_in_dim: int, latent_dim: int, dropout=0.1):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(cam_in_dim, latent_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(latent_dim, latent_dim),
+        )
+
+    def forward(self, cam_feats):   # cam_feats: [B, T, cam_in_dim]
+        return self.net(cam_feats)  # [B, T, latent_dim]
+
 class MaskTransformer(nn.Module):
     def __init__(self, code_dim, cond_mode, latent_dim=256, ff_size=1024, num_layers=8,
                  num_heads=4, dropout=0.1, clip_dim=512, cond_drop_prob=0.1,
@@ -167,6 +180,9 @@ class MaskTransformer(nn.Module):
         if self.cond_mode == 'action':
             assert 'num_actions' in kargs
         self.num_actions = kargs.get('num_actions', 1)
+        
+        self.dino_dim = 384
+        self.cam_in_dim = 3
 
         '''
         Preparing Networks
@@ -174,6 +190,10 @@ class MaskTransformer(nn.Module):
         self.input_process = InputProcess(self.code_dim, self.latent_dim)
         self.position_enc = PositionalEncoding(self.latent_dim, self.dropout)
         self.global_local_crossatt_block = CrossattBlock()
+        
+        modality_num = int(opt.use_traj) + int(opt.use_depth)
+        print(f'Using camera trajectory: {opt.use_traj}, Using depth: {opt.use_depth}')
+        self.fuse_proj = nn.Linear(self.latent_dim * (1 + modality_num), self.latent_dim)
 
         seqTransEncoderLayer = nn.TransformerEncoderLayer(d_model=self.latent_dim,
                                                           nhead=num_heads,
@@ -187,14 +207,7 @@ class MaskTransformer(nn.Module):
         self.encode_action = partial(F.one_hot, num_classes=self.num_actions)
 
         if self.cond_mode == 'video':
-            self.cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
-            #self.memo_emb = nn.Linear(self.clip_dim, self.latent_dim)
-        elif self.cond_mode == 'text':
-            self.cond_emb = nn.Linear(self.clip_dim, self.latent_dim)
-        elif self.cond_mode == 'action':
-            self.cond_emb = nn.Linear(self.num_actions, self.latent_dim)
-        elif self.cond_mode == 'uncond':
-            self.cond_emb = nn.Identity()
+            self.cond_emb = nn.Linear(self.dino_dim, self.latent_dim)
         else:
             raise KeyError("Unsupported condition mode!!!")
 
@@ -206,17 +219,13 @@ class MaskTransformer(nn.Module):
         self.output_process = OutputProcess_Bert(out_feats=opt.num_tokens, latent_dim=latent_dim)
 
         self.token_emb = nn.Embedding(_num_tokens, self.code_dim)
+        self.cam_encoder = CamTrajEncoder(self.cam_in_dim, self.latent_dim, dropout=dropout)
 
         self.apply(self.__init_weights)
 
         '''
         Preparing frozen weights
         '''
-
-        if self.cond_mode == 'text':
-            print('Loading CLIP...')
-            self.clip_version = clip_version
-            self.clip_model = self.load_and_freeze_clip(clip_version)
 
         self.noise_schedule = cosine_schedule
 
@@ -277,7 +286,7 @@ class MaskTransformer(nn.Module):
         else:
             return cond
 
-    def trans_forward(self, motion_ids, cond, padding_mask, force_mask=False, memory=None):
+    def trans_forward(self, motion_ids, cond, padding_mask, force_mask=False, cam_conds=None, depth_conds=None):
         '''
         :param motion_ids: (b, seqlen)
         :padding_mask: (b, seqlen), all pad positions are TRUE else FALSE
@@ -294,11 +303,30 @@ class MaskTransformer(nn.Module):
         if motion_ids is not None:
             # * 如果 motion_ids 不为 None，则拼接条件向量和输入序列
             
-            # token_emb (nn.Embedding): 将每个 token ID 映射为 code_dim 维的向量
-            x = self.token_emb(motion_ids)
-            # (b, seqlen, d) -> (seqlen, b, latent_dim)
-            x = self.input_process(x)  # [seqlen, bs, d]
-            x = self.position_enc(x)
+            # x = self.token_emb(motion_ids)
+            # # (b, seqlen, d) -> (seqlen, b, latent_dim)
+            # x = self.input_process(x)  # [seqlen, bs, d]
+            # x = self.position_enc(x)
+            
+            # 1) token embedding
+            tok = self.token_emb(motion_ids)                       # [B,   T-1, code_dim]
+            tok = self.input_process(tok)                          # [T-1, B,   latent_dim]
+            tok = tok.transpose(0, 1).contiguous()                 # [B,   T-1, latent_dim]
+            
+            if self.opt.use_traj:
+                assert cam_conds.shape[1] == tok.shape[1]
+                
+                cam = self.cam_encoder(cam_conds.cuda())           # [B,   T-1,   latent_dim]
+                
+                x = torch.cat([tok, cam], dim=-1)                  # [B,   T-1, latent_dim*2]
+            else:
+                x = tok
+            
+            if x.shape[-1] > self.latent_dim:
+                x = self.fuse_proj(x)                              # [B,   T-1, latent_dim]
+            x = x.transpose(0,1).contiguous()                      # [T-1, B,   latent_dim]
+            x = self.position_enc(x)                               # [T-1, B,   latent_dim]
+            
             xseq = torch.cat([cond, x], dim=0) #(seqlen+1, b, latent_dim)
 
             padding_mask = torch.cat([torch.zeros_like(padding_mask[:, 0:1]), padding_mask], dim=1) #(b, seqlen+1)
@@ -319,7 +347,7 @@ class MaskTransformer(nn.Module):
         logits = self.output_process(output) #(seqlen, b, e) -> (b, ntoken, seqlen)
         return logits
 
-    def forward(self, ids, y, m_lens, memory):
+    def forward(self, ids, y, m_lens, cam_traj=None, depth=None):
         '''
         :param ids: (b, n); [64, 50]
         :param y: raw text for cond_mode=text, (b, ) for cond_mode=action; [64, 512]
@@ -357,11 +385,13 @@ class MaskTransformer(nn.Module):
         # endregion
         
         # TODO: change to autoregressive transformer
-        x_ids = ids[:, :-1]  
+        x_ids = ids[:, :-1]
+        cam_traj = cam_traj[:, :-1, :]
+        
         labels = ids  
         padding_mask = ~non_pad_mask[:, :-1]  
-        
-        logits = self.trans_forward(x_ids, cond_vector, padding_mask, force_mask, memory)
+
+        logits = self.trans_forward(x_ids, cond_vector, padding_mask, force_mask, cam_conds=cam_traj, depth_conds=depth)
         ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.pad_id)
 
         return ce_loss, pred_id, acc
@@ -372,18 +402,20 @@ class MaskTransformer(nn.Module):
                                 padding_mask,
                                 cond_scale=3,
                                 force_mask=False,
-                                memory=None):
+                                cam_conds=None,
+                                depth_conds=None,
+                                ):
         # bs = motion_ids.shape[0]
         # if cond_scale == 1:
         if force_mask:
             # 强制mask掉输入条件
-            return self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, memory=memory)
+            return self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, cam_conds=cam_conds, depth_conds=depth_conds)
 
-        logits = self.trans_forward(motion_ids, cond_vector, padding_mask, memory=memory)
+        logits = self.trans_forward(motion_ids, cond_vector, padding_mask, cam_conds=cam_conds, depth_conds=depth_conds)
         if cond_scale == 1:
             return logits
 
-        aux_logits = self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, memory=memory)
+        aux_logits = self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, cam_conds=cam_conds, depth_conds=depth_conds)
 
         # Classifier-Free Guidance
         scaled_logits = aux_logits + (logits - aux_logits) * cond_scale
@@ -401,7 +433,8 @@ class MaskTransformer(nn.Module):
         topk_filter_thres=0.9,
         gsample=False,
         force_mask=False,
-        memory=None
+        cam_conds=None,
+        depth_conds=None,
     ):
         device = next(self.parameters()).device
         batch_size = len(m_lens)
@@ -431,12 +464,19 @@ class MaskTransformer(nn.Module):
                 padding_mask = torch.zeros((batch_size, ids.shape[1]), dtype=torch.bool, device=device)
 
             # 前向
+            if ids is not None and cam_conds is not None:
+                cam_input = cam_conds[:, :ids.shape[1], :]
+            else:
+                cam_input = cam_conds
+            
             logits = self.forward_with_cond_scale(
                 motion_ids=ids,
                 cond_vector=cond_vector,
                 padding_mask=padding_mask,
                 cond_scale=cond_scale,
-                force_mask=force_mask
+                force_mask=force_mask,
+                cam_conds=cam_input,
+                depth_conds=depth_conds,
             )                    # (b, num_token, seqlen)
             logits = logits.permute(0, 2, 1)  # -> (b, seqlen, num_token)
 

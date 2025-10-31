@@ -10,6 +10,7 @@ from models.mask_transformer.transformer_memo_trainer import MaskTransformerTrai
 from models.vq.model import RVQVAE
 from models.tc_clip.tc_clip import TCCLIP_VE
 from custom_clip import clip
+from models.dinov2.dino_encoder import Dino_Encoder
 
 from options.train_option import TrainT2MOptions
 
@@ -126,6 +127,17 @@ def prepare_video_encoder(clip_version):
     video_encoder = load_tcclip_model('./checkpoints/tcclip/zero_shot_k400_tc_clip_newkeys.pth', video_encoder)
     return video_encoder
 
+def prepare_dino_encoder(encoder='vits'):
+    # dino = torch.hub.load('facebookresearch/dinov2', 'dinov2_{:}14'.format(encoder))
+    # dim = dino.blocks[0].attn.qkv.in_features
+    # print(f'Loading DINOv2 {encoder} with feature dim {dim}')
+    dino_encoder = Dino_Encoder(encoder=encoder)
+    for param in dino_encoder.parameters():
+        param.requires_grad_(False)
+    dino_encoder.float()
+    dino_encoder.to(opt.device)
+    return dino_encoder
+
 if __name__ == '__main__':
     parser = TrainT2MOptions()
     opt = parser.parse()
@@ -162,7 +174,7 @@ if __name__ == '__main__':
     vq_model, vq_opt = load_vq_model()
     opt.num_tokens = vq_opt.nb_code
     
-    video_encoder = prepare_video_encoder(clip_version)
+    video_encoder = prepare_dino_encoder()
 
     t2m_transformer = MaskTransformer(code_dim=vq_opt.code_dim,
                                       cond_mode='video',
