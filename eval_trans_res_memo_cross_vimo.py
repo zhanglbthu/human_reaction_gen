@@ -38,6 +38,9 @@ def plot_t2m(data, save_dir):
         joint_data = data[i]
         joint = recover_from_ric(torch.from_numpy(joint_data).float(), 22).numpy()
         save_path = pjoin(save_dir, '%02d.mp4' % (i))
+        
+        # save joint data to .npy file
+        np.save(pjoin(save_dir, '%02d.npy' % (i)), joint)
         plot_3d_motion(save_path, kinematic_chain, joint, title="", fps=fps, radius=radius)
 
 def cal_traj_error(pred_motion, gt_motion, m_length):
@@ -272,8 +275,8 @@ if __name__ == '__main__':
 
     video_encoder = prepare_dino_encoder()
 
-    mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'mean.npy'))
-    std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, model_opt.vq_name, 'meta', 'std.npy'))
+    mean = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'mean.npy'))
+    std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'std.npy'))
 
     eval_val_dataset = VimoDataset(opt, mean, std, data_prefix=opt.data_root, ann_file=opt.test_txt, pipeline=val_pipeline)
     eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=True, pin_memory=True)
@@ -288,7 +291,7 @@ if __name__ == '__main__':
     for file in os.listdir(model_dir):
         if opt.which_epoch != "all" and opt.which_epoch not in file:
             continue
-        if file != 'net_best_acc.tar':
+        if file != 'net_best_fid.tar':
             continue
         print('loading checkpoint {}'.format(file))
         t2m_transformer, ep = load_trans_model(model_opt, file)
@@ -317,8 +320,8 @@ if __name__ == '__main__':
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
-                                                                        cal_mm=True,
-                                                                        save_anim=False, 
+                                                                        cal_mm=False,
+                                                                        save_anim=True, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
                                                                         traj_func=cal_traj_error)

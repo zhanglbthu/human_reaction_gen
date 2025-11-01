@@ -8,6 +8,7 @@ from utils.metrics import *
 import torch.nn.functional as F
 # import visualization.plot_3d_global as plot_3d
 from utils.motion_process import recover_from_ric
+from tqdm import tqdm
 #
 #
 # def tensorborad_add_video_xyz(writer, xyz, nb_iter, tag, nb_vis=4, title_batch=None, outname=None):
@@ -849,8 +850,12 @@ def evaluation_mask_transformer_fe_memo(out_dir, val_loader, trans, vq_model, vi
 
 @torch.no_grad()
 def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video_encoder, writer, ep, best_fid, best_div,
-                           eval_wrapper, plot_func,
-                           save_ckpt=False, save_anim=False):
+                           eval_wrapper, 
+                           plot_func,
+                           save_ckpt=False, 
+                           save_anim=False,
+                           traj_func=None
+                           ):
 
     def save(file_name, ep):
         t2m_trans_state_dict = trans.state_dict()
@@ -871,6 +876,7 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
 
     motion_annotation_list = []
     motion_pred_list = []
+    traj_error_list = []
 
     time_steps = 10  # change 18 to 10 according to https://github.com/EricGuo5513/momask-codes/issues/57
     if "kit" in out_dir:
@@ -1491,7 +1497,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
     else:
         num_mm_batch = 3
 
-    for i, batch in enumerate(val_loader):
+    for i, batch in tqdm(enumerate(val_loader)):
         '''
         imgs: [B, 16, 3, 224, 224]
         pose: [B, 200, 263]
