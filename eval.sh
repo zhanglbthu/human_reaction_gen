@@ -1,9 +1,9 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=2
 
 python eval_trans_res_memo_cross_vimo.py \
     --dataset_name vimo \
     --vq_name rvq_official \
-    --name ar_dinoCond_traj \
+    --name ar_dinoCond_depth_1031 \
     --exp_name ar \
     --res_name rtrans_official \
     --gpu_id 0 \
@@ -12,4 +12,4 @@ python eval_trans_res_memo_cross_vimo.py \
     --ext rvq1_rtrans1_bs64_cs4_ts10 \
     --which_epoch all \
     --test_txt test_spatial.txt \
-    --use_traj
+    --use_depth

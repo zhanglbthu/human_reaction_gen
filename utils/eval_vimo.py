@@ -1497,6 +1497,7 @@ def evaluation_mask_transformer_test_plus_res_memo(val_loader, vq_model, res_mod
         pose: [B, 200, 263]
         '''
         imgs, pose, m_length, video_path, cam_traj, depth = batch
+
         at_features = video_encoder(imgs.cuda()) 
         # at_features_mean: [B, 512], Global visual representation
         # at_features: [B, 16, 512], Local visual representation

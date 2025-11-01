@@ -1,6 +1,7 @@
 {
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "evaluate_gen",
             "type": "debugpy",
@@ -38,8 +39,12 @@
                 "--warm_up_iter", "250",
                 "--n_layers", "6",
                 "--test_txt", "debug.txt",
-                "--train_txt", "debug.txt"
+                "--train_txt", "debug.txt",
+                "--use_depth"
             ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2"      // ✅ 只使用 GPU 0
+            },
             "justMyCode": false
         }
     ]

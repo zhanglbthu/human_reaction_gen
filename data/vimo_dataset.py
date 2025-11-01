@@ -234,6 +234,7 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         idx = random.randint(0, len(motion) - m_length)
         motion = motion[idx:idx+m_length]
         
+        # * global head trajectory
         global_traj = get_head_traj(motion)  # (m_length, 3)
         global_traj = global_traj - global_traj[0:1, :]  # make start point at origin
         cam_traj = torch.from_numpy(global_traj).float() 
@@ -242,7 +243,8 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         motion = (motion - self.mean) / self.std
 
         imgs = results['imgs']
-        imgs, motion, cam_traj, depth = self.align_and_pad_modalities(imgs, motion, m_length, self.max_motion_length, depth=None, cam_traj=cam_traj)
+        depth = results['depth']
+        imgs, motion, cam_traj, depth = self.align_and_pad_modalities(imgs, motion, m_length, self.max_motion_length, depth=depth, cam_traj=cam_traj)
         
         imgs = imgs[::4, :, :, :] 
         # # else 初始化为zero
@@ -252,6 +254,7 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
             cam_traj = cam_traj[::4, :]
         else:
             cam_traj = torch.zeros((self.max_motion_length//4, 3), dtype=torch.float16)
+            
         if depth is not None:
             depth = depth[::4, :, :]
         else:
@@ -295,6 +298,7 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         # depth插值到 m_length 帧
         if depth is not None:
             depth = torch.from_numpy(depth).unsqueeze(0).unsqueeze(0) # [1, 1, T, H, W]
+            depth = depth.float()
             depth_resampled = F.interpolate(
                 depth, size=(m_length, H, W), mode='trilinear', align_corners=False
             ).squeeze(0).squeeze(0).numpy()  # [m_length, H, W]
@@ -368,13 +372,20 @@ class VimoDataset(VimoBaseDataset):
         video_infos = []
         ann_file_path = osp.join(self.data_prefix, self.ann_file)
         with open(ann_file_path, 'r') as fin:
-            for line in fin:
+            for line in tqdm(fin, desc="Loading annotation and data", ncols=100):
                 line_split = line.strip().split()
-                video_name, motion_name = line_split[:2]
+                video_name, motion_name, depth_name = line_split
                 video_name = osp.join(self.data_prefix, video_name)
                 motion_name = osp.join(self.data_prefix, motion_name)
+                depth_name = osp.join(self.data_prefix, depth_name) # .npy
+                
                 motion = np.load(motion_name) # [N, 263]
-                video_infos.append(dict(filename=video_name, label=motion, tar=False))
+                if self.opt.use_depth:
+                    depth = np.load(depth_name) # [N, H, W]
+                else:
+                    depth = np.zeros((motion.shape[0], 224, 224))
+                
+                video_infos.append(dict(filename=video_name, label=motion, depth=depth, tar=False))
         return video_infos
 
 
@@ -394,7 +405,7 @@ dict(type='DecordDecode'),
 dict(type='Resize', scale=(config_input_size, config_input_size), keep_ratio=False),
 dict(type='Normalize', **img_norm_cfg),
 dict(type='FormatShape', input_format='NCHW'),
-dict(type='Collect', keys=['imgs', 'label', 'filename'], meta_keys=[]),
+dict(type='Collect', keys=['imgs', 'label', 'filename', 'depth'], meta_keys=[]),
 dict(type='ToTensor', keys=['imgs'])
 ]
 
@@ -408,7 +419,7 @@ dict(type='DecordDecode'),
 dict(type='Resize', scale=(config_input_size, config_input_size), keep_ratio=False),
 dict(type='Normalize', **img_norm_cfg),
 dict(type='FormatShape', input_format='NCHW'),
-dict(type='Collect', keys=['imgs', 'label', 'filename'], meta_keys=[]),
+dict(type='Collect', keys=['imgs', 'label', 'filename', 'depth'], meta_keys=[]),
 dict(type='ToTensor', keys=['imgs'])
 ]
 

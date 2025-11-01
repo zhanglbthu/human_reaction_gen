@@ -288,7 +288,7 @@ if __name__ == '__main__':
     for file in os.listdir(model_dir):
         if opt.which_epoch != "all" and opt.which_epoch not in file:
             continue
-        if file != 'net_best_fid.tar':
+        if file != 'net_best_acc.tar':
             continue
         print('loading checkpoint {}'.format(file))
         t2m_transformer, ep = load_trans_model(model_opt, file)
