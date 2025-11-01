@@ -68,7 +68,7 @@ class MaskTransformerTrainer:
 
         conds = conds.to(self.device).float() if torch.is_tensor(conds) else conds
 
-        _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], conds, m_lens, at_features, cam_conds=cam_traj)
+        _loss, _pred_ids, _acc = self.t2m_transformer(code_idx[..., 0], conds, m_lens, cam_conds=cam_traj)
 
         return _loss, _acc
 

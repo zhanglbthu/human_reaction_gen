@@ -1,11 +1,11 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 python train_mask_transformer.py \
-    --name ar_cam_spatial_1028 \
+    --name ar_traj_woalign_1101 \
     --gpu_id 0 \
     --dataset_name vimo \
     --batch_size 64 \
-    --max_epoch 200 \
+    --max_epoch 50 \
     --vq_name rvq_official \
     --milestones 6000 \
     --warm_up_iter 250 \

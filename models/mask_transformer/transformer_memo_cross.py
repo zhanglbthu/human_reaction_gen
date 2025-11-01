@@ -295,21 +295,21 @@ class MaskTransformer(nn.Module):
         else:
             return cond
 
-    def trans_forward(self, motion_ids, cond, padding_mask, force_mask=False, memory=None, cam_conds=None):
+    def trans_forward(self, motion_ids, cond, padding_mask, force_mask=False, cam_conds=None):
         """
         motion_in_ids: [B, T]           # BOS+右移后的输入 ids
         conds:         [B, 1, clip_dim] # 逐帧视频特征
-        memory:        [B, T, 3]        # 逐帧相机轨迹
         padding_mask:  [B, T]           # True=屏蔽无效
         return logits: (B, vocab, T)
         """
 
-        cam_conds = cam_conds[:, 1:]
+        # cam_conds = cam_conds[:, :-1] # align
+        cam_conds = cam_conds[:, 1:] # w/o align
         
         cond = self.mask_cond(cond, force_mask=force_mask)
 
         tok = self.token_emb(motion_ids)        # [B, T, code_dim]
-        tok = self.input_process(tok)           # [T, B, latent]s
+        tok = self.input_process(tok)           # [T, B, latent]
         tok = tok.transpose(0,1).contiguous()   # [B, T, latent]
         cam = self.cam_encoder(cam_conds)       # [B, T, latent]
         
@@ -337,7 +337,7 @@ class MaskTransformer(nn.Module):
         logits = self.output_process(output) #(seqlen, b, e) -> (b, ntoken, seqlen)
         return logits
 
-    def forward(self, ids, y, m_lens, memory, cam_conds):
+    def forward(self, ids, y, m_lens, cam_conds):
         '''
         :param ids: (b, n); [64, 50]    
         :param y: raw text for cond_mode=text, (b, ) for cond_mode=action; [64, 512]
@@ -379,7 +379,7 @@ class MaskTransformer(nn.Module):
         
         labels = ids[:, 1:]
         
-        logits = self.trans_forward(x_ids, cond_vector, padding_mask, force_mask, memory, cam_conds)
+        logits = self.trans_forward(x_ids, cond_vector, padding_mask, force_mask, cam_conds)
         ce_loss, pred_id, acc = cal_performance(logits, labels, ignore_index=self.pad_id)
 
         return ce_loss, pred_id, acc
@@ -390,19 +390,18 @@ class MaskTransformer(nn.Module):
                                 padding_mask,
                                 cond_scale=3,
                                 force_mask=False,
-                                memory=None,
                                 cam_conds=None):
         # bs = motion_ids.shape[0]
         # if cond_scale == 1:
         if force_mask:
             # 强制mask掉输入条件
-            return self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, memory=memory, cam_conds=cam_conds)
+            return self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, cam_conds=cam_conds)
 
-        logits = self.trans_forward(motion_ids, cond_vector, padding_mask, memory=memory, cam_conds=cam_conds)
+        logits = self.trans_forward(motion_ids, cond_vector, padding_mask, cam_conds=cam_conds)
         if cond_scale == 1:
             return logits
 
-        aux_logits = self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, memory=memory, cam_conds=cam_conds)
+        aux_logits = self.trans_forward(motion_ids, cond_vector, padding_mask, force_mask=True, cam_conds=cam_conds)
 
         # Classifier-Free Guidance
         scaled_logits = aux_logits + (logits - aux_logits) * cond_scale
@@ -419,7 +418,6 @@ class MaskTransformer(nn.Module):
                  topk_filter_thres=0.9,
                  gsample=False,
                  force_mask=False,
-                 memory=None,
                  cam_conds=None
                  ):
         # print(self.opt.num_quantizers)
