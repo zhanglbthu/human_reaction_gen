@@ -32,6 +32,53 @@ kinematic_chain = paramUtil.t2m_kinematic_chain
 fps = 20
 radius = 4
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # 用于3D绘图
+
+def visualize_head_trajectories(pred_head_aligned, gt_head, save_path=None):
+    """
+    在同一3D坐标系中可视化预测与真实的头部轨迹。
+
+    Args:
+        pred_head_aligned (ndarray): 预测对齐后的头部轨迹，形状 [T, 3]
+        gt_head (ndarray): 真实头部轨迹，形状 [T, 3]
+        save_path (str): 保存路径（如 'traj_vis.png'），为 None 时只显示不保存。
+    """
+    fig = plt.figure(figsize=(6, 6))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # 绘制真实轨迹 (蓝色)
+    ax.plot(gt_head[:, 0], gt_head[:, 1], gt_head[:, 2], color='blue', label='GT Head Trajectory', linewidth=2)
+    ax.scatter(gt_head[0, 0], gt_head[0, 1], gt_head[0, 2], color='navy', marker='o', s=50, label='GT Start')
+    ax.scatter(gt_head[-1, 0], gt_head[-1, 1], gt_head[-1, 2], color='cyan', marker='^', s=50, label='GT End')
+
+    # 绘制预测轨迹 (红色)
+    ax.plot(pred_head_aligned[:, 0], pred_head_aligned[:, 1], pred_head_aligned[:, 2],
+            color='red', label='Pred Head (Aligned)', linewidth=2, linestyle='--')
+    ax.scatter(pred_head_aligned[0, 0], pred_head_aligned[0, 1], pred_head_aligned[0, 2],
+               color='darkred', marker='o', s=50, label='Pred Start')
+    ax.scatter(pred_head_aligned[-1, 0], pred_head_aligned[-1, 1], pred_head_aligned[-1, 2],
+               color='orange', marker='^', s=50, label='Pred End')
+
+    # 坐标轴设置
+    ax.set_xlabel('X', fontsize=12)
+    ax.set_ylabel('Y', fontsize=12)
+    ax.set_zlabel('Z', fontsize=12)
+    ax.set_title('Head Trajectory Comparison', fontsize=14)
+    ax.legend()
+
+    # 自动调整视角
+    ax.view_init(elev=30, azim=45)
+    ax.grid(True)
+
+    # 保存或显示
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+    else:
+        plt.show()
+
 def plot_t2m(data, save_dir):
     data = data * std + mean
     for i in range(len(data)):
@@ -46,6 +93,8 @@ def plot_t2m(data, save_dir):
 def cal_traj_error(pred_motion, gt_motion, m_length):
     # pred_motion = pred_motion * std + mean
     # gt_motion = gt_motion * std + mean
+    save_dir = './debug/traj_vis'
+    os.makedirs(save_dir, exist_ok=True)
     
     pred_np = pred_motion.detach().cpu().numpy()
     gt_np = gt_motion.detach().cpu().numpy()
@@ -69,6 +118,8 @@ def cal_traj_error(pred_motion, gt_motion, m_length):
         offset = gt_head[0] - pred_head[0]
         pred_head_aligned = pred_head + offset
 
+        visualize_head_trajectories(pred_head_aligned, gt_head, save_path=pjoin(save_dir, f'traj_{b}.png'))
+        
         # 每帧欧氏距离并取平均
         diff = np.linalg.norm(pred_head_aligned - gt_head, axis=1)
         all_errors.append(diff.mean())
@@ -279,7 +330,7 @@ if __name__ == '__main__':
     std = np.load(pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'meta', 'std.npy'))
 
     eval_val_dataset = VimoDataset(opt, mean, std, data_prefix=opt.data_root, ann_file=opt.test_txt, pipeline=val_pipeline)
-    eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=True, pin_memory=True)
+    eval_val_loader = DataLoader(eval_val_dataset, batch_size=opt.batch_size, num_workers=8, shuffle=False, pin_memory=True)
     print('Preprocessing data...')
     eval_val_loader = [batch_data for batch_data in tqdm(eval_val_loader)]
 

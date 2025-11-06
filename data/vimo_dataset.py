@@ -374,10 +374,15 @@ class VimoDataset(VimoBaseDataset):
         with open(ann_file_path, 'r') as fin:
             for line in tqdm(fin, desc="Loading annotation and data", ncols=100):
                 line_split = line.strip().split()
-                video_name, motion_name, depth_name = line_split
+                if len(line_split) == 3:
+                    video_name, motion_name, depth_name = line_split
+                else:
+                    video_name, motion_name = line_split
+                    
                 video_name = osp.join(self.data_prefix, video_name)
                 motion_name = osp.join(self.data_prefix, motion_name)
-                depth_name = osp.join(self.data_prefix, depth_name) # .npy
+                if self.opt.use_depth:
+                    depth_name = osp.join(self.data_prefix, depth_name) # .npy
                 
                 motion = np.load(motion_name) # [N, 263]
                 if self.opt.use_depth:

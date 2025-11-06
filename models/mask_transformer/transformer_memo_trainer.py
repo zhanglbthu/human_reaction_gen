@@ -108,7 +108,7 @@ class MaskTransformerTrainer:
             print('Resume wo optimizer')
         return checkpoint['ep'], checkpoint['total_it']
 
-    def train(self, train_loader, val_loader, eval_val_loader, eval_wrapper, plot_eval):
+    def train(self, train_loader, val_loader, eval_val_loader, eval_wrapper, plot_eval, traj_func):
         self.t2m_transformer.to(self.device)
         self.vq_model.to(self.device)
         self.video_encoder.to(self.device)
@@ -144,7 +144,9 @@ class MaskTransformerTrainer:
             self.logger, epoch,
             best_fid=100, best_div=100,
             eval_wrapper=eval_wrapper, plot_func=plot_eval, 
-            save_ckpt=True, save_anim=True
+            save_ckpt=True, 
+            save_anim=True,
+            traj_func=traj_func
         )
         #breakpoint()
         best_loss = 100
@@ -216,8 +218,11 @@ class MaskTransformerTrainer:
                 self.logger, epoch, 
                 best_fid=best_fid, best_div=best_div, 
                 eval_wrapper=eval_wrapper, plot_func=plot_eval,
-                save_ckpt=True, save_anim=(epoch%self.opt.eval_every_e==0)
-            )
+                save_ckpt=True, 
+                save_anim=(epoch%self.opt.eval_every_e==0),
+                traj_func=traj_func
+                )
+            
 
 
 class ResidualTransformerTrainer:
