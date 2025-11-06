@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=1
 
 python train_mask_transformer.py \
-    --name ar_traj_woalign_1101 \
+    --name ar_traj_woalign_1106 \
     --gpu_id 0 \
     --dataset_name vimo \
     --batch_size 64 \

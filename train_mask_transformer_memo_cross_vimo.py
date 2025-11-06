@@ -38,6 +38,7 @@ def plot_t2m(data, save_dir, captions, m_lengths):
         # print(joint.shape)
         plot_3d_motion(save_path, kinematic_chain, joint, title=caption, fps=fps, radius=radius)
 
+
 def load_vq_model():
     opt_path = pjoin(opt.checkpoints_dir, opt.dataset_name, opt.vq_name, 'opt.txt')
     vq_opt = get_opt(opt_path, opt.device)

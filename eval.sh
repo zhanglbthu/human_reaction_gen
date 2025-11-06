@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 python eval_trans_res_memo_cross_vimo.py \
     --dataset_name vimo \
