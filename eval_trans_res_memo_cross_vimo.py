@@ -114,11 +114,16 @@ def cal_traj_error(pred_motion, gt_motion, m_length):
         pred_head = get_head_traj(pred_seq)
         gt_head = get_head_traj(gt_seq)
 
+        pred_head = np.zeros_like(pred_head)
+        
         # 平移对齐
         offset = gt_head[0] - pred_head[0]
         pred_head_aligned = pred_head + offset
+        
+        # # set pred_head_aligned to all zeros for debug
+        # pred_head_aligned = np.zeros_like(pred_head)
 
-        visualize_head_trajectories(pred_head_aligned, gt_head, save_path=pjoin(save_dir, f'traj_{b}.png'))
+        # visualize_head_trajectories(pred_head_aligned, gt_head, save_path=pjoin(save_dir, f'traj_{b}.png'))
         
         # 每帧欧氏距离并取平均
         diff = np.linalg.norm(pred_head_aligned - gt_head, axis=1)
@@ -372,7 +377,7 @@ if __name__ == '__main__':
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
                                                                         cal_mm=False,
-                                                                        save_anim=True, 
+                                                                        save_anim=False, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
                                                                         traj_func=cal_traj_error)
