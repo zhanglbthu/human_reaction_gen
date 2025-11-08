@@ -234,10 +234,16 @@ class VimoBaseDataset(Dataset, metaclass=ABCMeta):
         idx = random.randint(0, len(motion) - m_length)
         motion = motion[idx:idx+m_length]
         
-        # * global head trajectory
+        # * relative head trajectory
         global_traj = get_head_traj(motion)  # (m_length, 3)
-        global_traj = global_traj - global_traj[0:1, :]  # make start point at origin
-        cam_traj = torch.from_numpy(global_traj).float() 
+        delta_traj = global_traj[1:, :] - global_traj[:-1, :]  
+        cam_traj = np.vstack([np.zeros((1, 3)), delta_traj])
+        cam_traj = torch.from_numpy(cam_traj).float()
+        
+        # # * global head trajectory
+        # global_traj = get_head_traj(motion)  # (m_length, 3)
+        # global_traj = global_traj - global_traj[0:1, :]  # make start point at origin
+        # cam_traj = torch.from_numpy(global_traj).float() 
 
         "Z Normalization"
         motion = (motion - self.mean) / self.std

@@ -419,8 +419,8 @@ class MaskTransformer(nn.Module):
         
         # TODO: change to autoregressive transformer
         x_ids = ids[:, :-1]
-        # cam_traj = cam_traj[:, :-1, :]
-        cam_traj = cam_traj[:, 1:, :]
+        cam_traj = cam_traj[:, :-1, :]
+        # cam_traj = cam_traj[:, 1:, :]
         depth = depth[:, 1:, :, :]
         
         labels = ids  
@@ -502,7 +502,7 @@ class MaskTransformer(nn.Module):
 
             # 前向
             if ids is not None:
-                cam_input = cam_conds[:, 1:ids.shape[1]+1, :]
+                cam_input = cam_conds[:, :ids.shape[1], :]
                 depth_input = depth_conds[:, 1:ids.shape[1]+1, :, :]
             else:
                 cam_input = None
