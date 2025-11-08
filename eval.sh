@@ -3,7 +3,7 @@ export CUDA_VISIBLE_DEVICES=0
 python eval_trans_res_memo_cross_vimo.py \
     --dataset_name vimo \
     --vq_name rvq_official \
-    --name baseline_wfix \
+    --name baseline_1109 \
     --res_name rtrans_official \
     --exp_name baseline_wofix \
     --gpu_id 0 \

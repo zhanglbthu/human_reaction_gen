@@ -304,7 +304,7 @@ if __name__ == '__main__':
         mm = []
         traj = []
 
-        repeat_time = 5
+        repeat_time = 20
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm, eval_traj = \
@@ -312,12 +312,12 @@ if __name__ == '__main__':
                                                                         i, eval_wrapper=eval_wrapper, time_steps=opt.time_steps,
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
-                                                                        cal_mm=True,
+                                                                        cal_mm=False,
                                                                         save_anim=False, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
                                                                         use_res=False,
-                                                                        cal_latency=True,
+                                                                        cal_latency=False,
                                                                         traj_func=cal_traj_error)
             fid.append(eval_fid)
             div_real.append(eval_div_real)

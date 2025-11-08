@@ -1,7 +1,7 @@
 export CUDA_VISIBLE_DEVICES=1
 
 python train_mask_transformer_memo_cross_vimo.py \
-    --name baseline_wofix \
+    --name baseline_1109 \
     --gpu_id 0 \
     --dataset_name vimo \
     --batch_size 64 \
@@ -10,5 +10,5 @@ python train_mask_transformer_memo_cross_vimo.py \
     --milestones 6000 \
     --warm_up_iter 250 \
     --n_layers 6 \
-    --train_txt train.txt \
-    --test_txt test.txt
+    --train_txt train_spatial.txt \
+    --test_txt test_spatial.txt

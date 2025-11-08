@@ -850,7 +850,8 @@ def evaluation_mask_transformer_fe_memo(out_dir, val_loader, trans, vq_model, vi
 @torch.no_grad()
 def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video_encoder, writer, ep, best_fid, best_div,
                            eval_wrapper, plot_func,
-                           save_ckpt=False, save_anim=False):
+                           save_ckpt=False, save_anim=False,
+                           traj_func=None):
 
     def save(file_name, ep):
         t2m_trans_state_dict = trans.state_dict()
@@ -871,6 +872,7 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
 
     motion_annotation_list = []
     motion_pred_list = []
+    traj_error_list = []
 
     time_steps = 10  # change 18 to 10 according to https://github.com/EricGuo5513/momask-codes/issues/57
     if "kit" in out_dir:
@@ -883,6 +885,7 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
     # assert num_quantizer >= len(time_steps) and num_quantizer >= len(cond_scales)
 
     nb_sample = 0
+    best_traj_error = 1e10
     # for i in range(1):
     for batch in val_loader:
         imgs, pose, m_length, video_path = batch
@@ -909,9 +912,18 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
         motion_pred_list.append(em_pred)
 
         nb_sample += bs
+        
+        if traj_func is not None:
+            pred_motions = pred_motions.detach().cpu().numpy()
+            pose = pose.detach().cpu().numpy()
+            m_length = m_length.cpu().numpy()
+            traj_error = traj_func(pred_motions, pose, m_length)
+            traj_error_list.append(traj_error)
 
     motion_annotation_np = torch.cat(motion_annotation_list, dim=0).cpu().numpy()
     motion_pred_np = torch.cat(motion_pred_list, dim=0).cpu().numpy()
+    traj_error_np = torch.cat(traj_error_list, dim=0).cpu().numpy() if len(traj_error_list) > 0 else np.array([0.0])
+    avg_traj_error = np.mean(traj_error_np).item() * 100
     gt_mu, gt_cov = calculate_activation_statistics(motion_annotation_np)
     mu, cov = calculate_activation_statistics(motion_pred_np)
 
@@ -920,12 +932,13 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
 
     fid = calculate_frechet_distance(gt_mu, gt_cov, mu, cov)
 
-    msg = f"--> \t Eva. Ep {ep} :, FID. {fid:.4f}, Diversity Real. {diversity_real:.4f}, Diversity. {diversity:.4f}"
+    msg = f"--> \t Eva. Ep {ep} :, FID. {fid:.4f}, Diversity Real. {diversity_real:.4f}, Diversity. {diversity:.4f}, Trajectory Error. {avg_traj_error:.4f}"
     print(msg)
 
     # if draw:
     writer.add_scalar('./Test/FID', fid, ep)
     writer.add_scalar('./Test/Diversity', diversity, ep)
+    writer.add_scalar('./Test/Trajectory_Error', avg_traj_error, ep)
 
     if fid < best_fid:
         msg = f"--> --> \t FID Improved from {best_fid:.5f} to {fid:.5f} !!!"
@@ -933,6 +946,11 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
         best_fid, best_ep = fid, ep
         if save_ckpt:
             save(os.path.join(out_dir, 'model', 'net_best_fid.tar'), ep)
+    
+    if avg_traj_error < best_traj_error:
+        msg = f"--> --> \t Trajectory Error Improved from {best_traj_error:.5f} to {avg_traj_error:.5f} !!!"
+        print(msg)
+        best_traj_error = avg_traj_error
 
     if abs(diversity_real - diversity) < abs(diversity_real - best_div):
         msg = f"--> --> \t Diversity Improved from {best_div:.5f} to {diversity:.5f} !!!"
@@ -941,9 +959,13 @@ def evaluation_mask_transformer_memo(out_dir, val_loader, trans, vq_model, video
 
     if save_anim:
         rand_idx = torch.randint(bs, (3,))
-        data = pred_motions[rand_idx].detach().cpu().numpy()
+        # 如果data是tensor
+        if isinstance(pred_motions, torch.Tensor):
+            data = pred_motions[rand_idx].detach().cpu().numpy()
+        else:
+            data = pred_motions[rand_idx]
         captions = ['' for _ in rand_idx]  # [clip_text[k] for k in rand_idx]
-        lengths = m_length[rand_idx].cpu().numpy()
+        lengths = m_length[rand_idx].cpu().numpy() if isinstance(m_length, torch.Tensor) else m_length[rand_idx]
         save_dir = os.path.join(out_dir, 'animation', 'E%04d' % ep)
         os.makedirs(save_dir, exist_ok=True)
         # print(lengths)
