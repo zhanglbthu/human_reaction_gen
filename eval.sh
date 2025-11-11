@@ -1,9 +1,9 @@
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=2
 
 python eval_trans_res_memo_cross_vimo.py \
     --dataset_name vimo \
     --vq_name rvq_official \
-    --name ar_dinoCond_traj_depth_1031 \
+    --name ar_wofix \
     --exp_name ar_wofix \
     --res_name rtrans_official \
     --gpu_id 0 \

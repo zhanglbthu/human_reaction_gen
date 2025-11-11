@@ -114,7 +114,7 @@ def cal_traj_error(pred_motion, gt_motion, m_length):
         pred_head = get_head_traj(pred_seq)
         gt_head = get_head_traj(gt_seq)
 
-        pred_head = np.zeros_like(pred_head)
+        # pred_head = np.zeros_like(pred_head)
         
         # 平移对齐
         offset = gt_head[0] - pred_head[0]
@@ -368,7 +368,7 @@ if __name__ == '__main__':
         mm = []
         traj = []
 
-        repeat_time = 3
+        repeat_time = 20
         for i in tqdm(range(repeat_time)):
             with torch.no_grad():
                 eval_fid, eval_div_real, eval_div, eval_mm, eval_traj = \
