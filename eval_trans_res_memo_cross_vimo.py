@@ -313,7 +313,7 @@ if __name__ == '__main__':
                                                                         cond_scale=opt.cond_scale, temperature=opt.temperature, topkr=opt.topkr,
                                                                         gsample=opt.gumbel_sample, force_mask=opt.force_mask, 
                                                                         cal_mm=False,
-                                                                        save_anim=False, 
+                                                                        save_anim=True, 
                                                                         out_dir=out_dir, 
                                                                         plot_func=plot_t2m,
                                                                         use_res=False,
